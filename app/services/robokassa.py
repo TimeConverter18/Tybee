@@ -41,8 +41,8 @@ def _signature(value: str) -> str:
     return hashlib.new(_hash_name(), value.encode("utf-8")).hexdigest().upper()
 
 
-def build_payment_link(invoice_id: int, amount: int, description: str) -> str | None:
-    if not robokassa_ready():
+def build_payment_link(invoice_id: int, amount: int | None, description: str) -> str | None:
+    if amount is None or amount <= 0 or not robokassa_ready():
         return None
     settings = get_settings()
     out_sum = f"{amount:.2f}"

@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.db.models import Order, RobokassaPayment, SupportInbox, SupportOutbox, User
 from app.robokassa_webhook import process_robokassa_result
-from app.services.robokassa import create_unban_payment
+from app.services.robokassa import build_payment_link, create_unban_payment
 
 
 class RobokassaTestCase(unittest.IsolatedAsyncioTestCase):
@@ -89,6 +89,11 @@ class RobokassaTestCase(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(repeated.id, payment.id)
             count = await session.scalar(select(func.count()).select_from(RobokassaPayment))
             self.assertEqual(count, 1)
+
+    def test_payment_link_rejects_missing_or_nonpositive_price(self) -> None:
+        self.assertIsNone(build_payment_link(150_000_000, None, "Order"))
+        self.assertIsNone(build_payment_link(150_000_000, 0, "Order"))
+        self.assertIsNone(build_payment_link(150_000_000, -1, "Order"))
 
 
 if __name__ == "__main__":

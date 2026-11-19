@@ -169,6 +169,24 @@ docker compose -f docker-compose.yml -f compose.server.yml up -d --build
 
 При использовании второго файла применяйте те же `-f` к последующим командам Compose. Не включайте `DEV` на доступном извне сервере: этот режим позволяет войти без подтверждения Telegram под любым активным сотрудником, включая администратора.
 
+HTTPS-прокси должен направлять Robokassa и Avito в процесс бота, а остальное — в панель. Пример Caddyfile для сервисов Compose:
+
+```caddy
+panel.example.com {
+    handle /robokassa/result {
+        reverse_proxy bot:8080
+    }
+    handle /avito/webhook/* {
+        reverse_proxy bot:8080
+    }
+    handle {
+        reverse_proxy site:8000
+    }
+}
+```
+
+Если proxy работает в другом контейнере, укажите его IP или Docker-подсеть в `WEBHOOK_TRUSTED_PROXY_IPS`, чтобы rate-limit различал клиентов по `X-Forwarded-For`. Для Uvicorn панели доверенные proxy задаются через `FORWARDED_ALLOW_IPS`. На первом обновлении существующей базы запускайте процессы последовательно: сначала `bot`, после успешной миграции и создания обложки — `site`. Не заменяйте существующий production PostgreSQL сервисом `db` из репозиторного Compose.
+
 ### Вход сотрудников
 
 Администраторы из `WEB_ADMIN_IDS` добавляются или поддерживаются при запуске сайта. Остальные сотрудники входят после добавления и приглашения; учётная запись должна быть активной.

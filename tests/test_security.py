@@ -32,6 +32,19 @@ class RateLimitTestCase(unittest.TestCase):
             "198.51.100.20",
         )
 
+    def test_configured_proxy_network_is_trusted(self) -> None:
+        headers = {"X-Forwarded-For": "203.0.113.10"}
+        settings = SimpleNamespace(webhook_trusted_proxy_ips="172.20.0.0/24")
+        with patch("app.avito_webhook.get_settings", return_value=settings):
+            self.assertEqual(
+                _rate_key(SimpleNamespace(remote="172.20.0.6", headers=headers)),
+                "203.0.113.10",
+            )
+            self.assertEqual(
+                _rate_key(SimpleNamespace(remote="172.21.0.6", headers=headers)),
+                "172.21.0.6",
+            )
+
     def test_invalid_forwarded_ip_falls_back_to_loopback(self) -> None:
         request = SimpleNamespace(remote="127.0.0.1", headers={"X-Forwarded-For": "not-an-ip"})
         self.assertEqual(_rate_key(request), "127.0.0.1")

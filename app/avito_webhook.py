@@ -42,13 +42,23 @@ class ProfileRef:
     account_id: int | None
 
 
+def _trusted_proxy(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    for value in get_settings().webhook_trusted_proxy_ips.replace(";", ",").split(","):
+        try:
+            if address in ipaddress.ip_network(value.strip(), strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def _rate_key(request: web.Request) -> str:
     remote = request.remote or "unknown"
     try:
         address = ipaddress.ip_address(remote)
     except ValueError:
         return remote
-    if address.is_loopback:
+    if address.is_loopback or _trusted_proxy(address):
         forwarded = request.headers.get("X-Forwarded-For", "").split(",", 1)[0].strip()
         if forwarded:
             try:
