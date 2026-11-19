@@ -95,7 +95,6 @@ jobs:
       - name: Run bot for the test window
         env:
           TYBEE_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          TYBEE_ADMIN_IDS: ${{ secrets.ADMIN_IDS }}
           POSTGRES_HOST: localhost
           POSTGRES_PORT: "5432"
           POSTGRES_DB: taibi

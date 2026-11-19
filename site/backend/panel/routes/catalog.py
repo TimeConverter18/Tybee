@@ -89,9 +89,14 @@ async def delete_product(product_id: int, me=Depends(manage), session: AsyncSess
     except CatalogError as exc:
         raise _wrap(exc) from None
     article = product.article
+    photo_path = product_photo_path(product_id)
     await service.delete_product(session, product)
     await write_audit(session, me, "catalog.product.delete", article, {"id": product_id})
     await session.commit()
+    try:
+        photo_path.unlink(missing_ok=True)
+    except OSError:
+        pass
     return {"ok": True}
 
 

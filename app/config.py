@@ -15,9 +15,6 @@ class Settings(BaseSettings):
     bot_token: str = Field(
         default="", validation_alias=AliasChoices("TYBEE_BOT_TOKEN", "TAIBI_BOT_TOKEN", "BOT_TOKEN")
     )
-    admin_ids_raw: str = Field(
-        default="", validation_alias=AliasChoices("TYBEE_ADMIN_IDS", "TAIBI_ADMIN_ID", "ADMIN_IDS")
-    )
 
     unban_fine_rub: int = 50
     profile_orders_limit: int = Field(default=10, ge=1)
@@ -80,14 +77,6 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return False
         return value
-
-    @property
-    def admin_ids(self) -> list[int]:
-        return [
-            int(part)
-            for part in self.admin_ids_raw.replace(";", ",").split(",")
-            if part.strip()
-        ]
 
     @property
     def web_admin_ids(self) -> list[int]:
