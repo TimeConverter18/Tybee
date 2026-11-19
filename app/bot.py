@@ -1,28 +1,42 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextlib import suppress
 
-from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
-from aiogram.types import (
-    BotCommand,
-    BotCommandScopeChat,
-)
+from aiogram import Dispatcher
 
+from app.avito_webhook import start_web_server
 from app.config import get_settings
-from app.db.base import init_models
-from app.db.seed import purge_demo_products, seed
+from app.covers import registry
+from app.covers.loader import init_default_cover
+from app.covers.service import upgrade_all_covers
+from app.covers.supervisor import Supervisor
+from app.db.base import init_models, migrate_avito_profiles, session_factory
+from app.db.seed import reset_admin_states
 from app.handlers import build_router
 from app.middlewares import DbSessionMiddleware
+from app.services.avito import close_avito
+from app.services.broadcast_worker import broadcast_worker
+from app.services.outbox import outbox_worker
+from app.support.attachments import secure_storage
 
 logger = logging.getLogger(__name__)
 
 
-def create_dispatcher() -> Dispatcher:
+class _CoverLogFilter(logging.Filter):
+    """Adds the slug of the cover being served to every log record."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.cover = registry.cover_slug_var.get()
+        return True
+
+
+def create_dispatcher(cover_id: int) -> Dispatcher:
+    """A NEW dispatcher and router tree per cover (a router has one parent only);
+    the covers share nothing but the database."""
     dp = Dispatcher()
-    middleware = DbSessionMiddleware()
+    middleware = DbSessionMiddleware(cover_id)
     # Outer (not inner) middlewares run for EVERY update, before filters —
     # required here: the ban guard and the per-update user must not depend on
     # some handler's filters matching first.
@@ -32,129 +46,44 @@ def create_dispatcher() -> Dispatcher:
     return dp
 
 
-def create_bot() -> Bot:
-    settings = get_settings()
-    return Bot(
-        token=settings.bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+def _setup_logging() -> None:
+    handler = logging.StreamHandler()
+    handler.addFilter(_CoverLogFilter())
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s | %(levelname)-8s | %(name)s | [%(cover)s] %(message)s")
     )
-
-
-async def _set_commands(bot: Bot) -> None:
-    await bot.set_my_commands(
-        [BotCommand(command="start", description="Открыть меню Тайби")]
-    )
-    settings = get_settings()
-    # Support commands belong in the support chat (their handlers are scoped there).
-    support_commands = [
-        BotCommand(command="order", description='Создать заказ: /order "Название" [описание] сумма'),
-        BotCommand(command="ban", description="Заблокировать клиента"),
-        BotCommand(command="pardon", description="Разблокировать клиента"),
-    ]
-    # The admin panel is a private-chat command for administrators.
-    admin_private_commands = [
-        BotCommand(command="start", description="Открыть меню Тайби"),
-        BotCommand(command="admin", description="Админ-панель: каталог и статистика"),
-        BotCommand(command="ban", description="Заблокировать: /ban id или @username"),
-        BotCommand(command="pardon", description="Разблокировать: /pardon id или @username"),
-    ]
-    scopes: list[tuple[int, list[BotCommand]]] = [
-        (admin_id, admin_private_commands) for admin_id in settings.admin_ids
-    ]
-    if settings.support_chat_id is not None:
-        scopes.append((settings.support_chat_id, support_commands))
-    for chat_id, commands in scopes:
-        try:
-            await bot.set_my_commands(commands, scope=BotCommandScopeChat(chat_id=chat_id))
-        except TelegramBadRequest as exc:
-            logger.info("Could not set commands for %s: %s", chat_id, exc)
-
-
-async def _check_support_chat(bot: Bot, me_id: int) -> None:
-    """Verify the support-chat setup and log obvious misconfigurations.
-
-    Per-client forum topics are created only when the support chat is a forum
-    supergroup and the bot is an admin with the right to manage topics —
-    without that the "dialogs" never appear in the group.
-    """
-    settings = get_settings()
-    chat_id = settings.support_chat_id
-    if chat_id is None:
-        logger.info(
-            "SUPPORT_CHAT_ID is not set — client dialogs go to the first admin's DMs."
-        )
-        return
-    try:
-        chat = await bot.get_chat(chat_id)
-        logger.info("Support chat: id=%s type=%s title=%s", chat_id, chat.type, chat.title)
-        is_forum = getattr(chat, "is_forum", None)
-        if not is_forum:
-            logger.warning(
-                "Support chat %s is NOT a forum supergroup (is_forum=%s). "
-                "Per-client topics (dialogs) will NOT be created — messages will "
-                "go to the general chat. Enable Topics in the group settings.",
-                chat_id,
-                is_forum,
-            )
-        member = await bot.get_chat_member(chat_id, me_id)
-        status = getattr(member, "status", None)
-        if status != "administrator":
-            logger.warning(
-                "The bot is NOT an administrator of the support chat %s (status=%s). "
-                "It cannot create topics or post messages into them.",
-                chat_id,
-                status,
-            )
-        elif not getattr(member, "can_manage_topics", False):
-            logger.warning(
-                "The bot lacks the 'manage topics' right in the support chat %s "
-                "(can_manage_topics=%s) — creating per-client topics will fail.",
-                chat_id,
-                getattr(member, "can_manage_topics", None),
-            )
-    except TelegramAPIError as exc:
-        logger.warning(
-            "Could not verify the support chat %s (wrong SUPPORT_CHAT_ID, or the "
-            "bot is not in this chat?): %s",
-            chat_id,
-            exc,
-        )
+    root = logging.getLogger()
+    root.handlers[:] = [handler]
+    root.setLevel(logging.INFO)
 
 
 async def run() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    )
+    _setup_logging()
     await init_models()
-    await seed()
-    await purge_demo_products()
+    await migrate_avito_profiles()
+    await reset_admin_states()
+    if init_default_cover():
+        logger.info("Created %s/default from the bundled template", get_settings().covers_root)
+    # New template keys (e.g. statuses added in ТЗ-2) must exist before the validator sees the covers.
+    async with session_factory() as session:
+        await upgrade_all_covers(session)
+    secure_storage()
 
-    bot = create_bot()
-    dp = create_dispatcher()
-    await _set_commands(bot)
-
-    me = await bot.get_me()
-    logger.info("Starting Тайби bot as @%s", me.username)
-    await _check_support_chat(bot, me.id)
-
-    from app.avito_webhook import start_avito_webhook
-    from app.config import get_settings
-    from app.services.avito import close_avito, get_avito
-
-    settings = get_settings()
-    if get_avito().enabled:
-        logger.info("Avito integration enabled")
-    elif settings.avito_enabled:
-        logger.warning(
-            "AVITO_ENABLED=true, but AVITO_CLIENT_ID/AVITO_CLIENT_SECRET are not "
-            "set — the Avito integration stays OFF."
-        )
-    webhook_runner = await start_avito_webhook(bot)
+    supervisor = Supervisor()
+    supervisor_task = asyncio.create_task(supervisor.run(), name="covers-supervisor")
+    outbox_task = asyncio.create_task(outbox_worker(), name="outbox")
+    broadcast_task = asyncio.create_task(broadcast_worker(), name="broadcasts")
+    webhook_runner = await start_web_server()
     try:
-        await dp.start_polling(bot)
+        await supervisor_task
     finally:
+        outbox_task.cancel()
+        broadcast_task.cancel()
+        supervisor_task.cancel()
+        for task in (outbox_task, broadcast_task, supervisor_task):
+            with suppress(asyncio.CancelledError):
+                await task
+        await supervisor.shutdown()
         if webhook_runner is not None:
             await webhook_runner.cleanup()
         await close_avito()
-        await bot.session.close()

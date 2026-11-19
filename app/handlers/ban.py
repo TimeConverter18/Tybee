@@ -1,46 +1,42 @@
-"""Client-side unban flow: pay a fine in Telegram Stars (XTR) to get unblocked."""
+"""Client-side unban flow with Robokassa payments."""
 from __future__ import annotations
 
 from aiogram import Bot, F, Router
-from aiogram.types import CallbackQuery, LabeledPrice, Message, PreCheckoutQuery
+from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import repositories as repo
-from app import texts
-from app.config import get_settings
-from app.db.models import User
-from app.services.screens import show_menu
+from app.covers.loader import cover_text, cover_unban_fine
+from app.db.models import User, UserCover
+from app.keyboards import inline
+from app.services.robokassa import build_payment_link, create_unban_payment, robokassa_ready
 
 router = Router(name="ban")
 
-UNBAN_PAYLOAD = "unban_fine"
-
 
 @router.callback_query(F.data == "unban:pay")
-async def request_unban_invoice(call: CallbackQuery, bot: Bot, user: User) -> None:
-    fine = get_settings().unban_fine_stars
-    await bot.send_invoice(
-        chat_id=user.id,
-        title=texts.UNBAN_INVOICE_TITLE,
-        description=texts.UNBAN_INVOICE_DESC,
-        payload=UNBAN_PAYLOAD,
-        currency="XTR",
-        prices=[LabeledPrice(label=texts.UNBAN_INVOICE_LABEL, amount=fine)],
+async def request_unban_payment(
+    call: CallbackQuery, bot: Bot, session: AsyncSession, user: User, uc: UserCover
+) -> None:
+    cid = uc.cover_id
+    if not user.is_banned:
+        await call.answer(cover_text(cid, "ANSWER_BAN_LIFTED"), show_alert=True)
+        return
+    if not robokassa_ready():
+        await call.answer(cover_text(cid, "ANSWER_PAYMENT_UNAVAILABLE"), show_alert=True)
+        return
+    payment = await create_unban_payment(session, user, cover_id=cid, amount=cover_unban_fine(cid))
+    url = build_payment_link(
+        payment.id,
+        payment.amount,
+        cover_text(cid, "UNBAN_PAYMENT_DESCRIPTION", user_id=user.id),
+    )
+    if url is None:
+        await call.answer(cover_text(cid, "ANSWER_PAYMENT_UNAVAILABLE"), show_alert=True)
+        return
+    await bot.send_message(
+        user.id,
+        cover_text(cid, "UNBAN_PAYMENT_MESSAGE", amount=payment.amount),
+        parse_mode="HTML",
+        reply_markup=inline.pay_fine_url(cid, url, payment.amount),
     )
     await call.answer()
-
-
-@router.pre_checkout_query()
-async def confirm_pre_checkout(query: PreCheckoutQuery) -> None:
-    await query.answer(ok=True)
-
-
-@router.message(F.successful_payment)
-async def on_successful_payment(
-    message: Message, bot: Bot, session: AsyncSession, user: User
-) -> None:
-    if message.successful_payment.invoice_payload != UNBAN_PAYLOAD:
-        return
-    await repo.set_banned(session, user, False)
-    await message.answer(texts.UNBANNED, parse_mode="HTML")
-    await show_menu(bot, session, user, force_new=True)

@@ -1,47 +1,94 @@
-"""HTTP server receiving Avito Messenger webhooks.
-
-Avito POSTs every chat event to the subscription URL. We only care about
-incoming client messages: each Avito client is mapped to a User row and gets
-their own support thread in Telegram (exactly like Telegram clients), where
-their messages appear and from where support replies / invoices / status
-updates are delivered back to the Avito chat.
-
-Run together with the bot polling loop (see app.bot.run).
-"""
+"""aiohttp server of the bot process: Avito webhooks (one route for all profiles) and Robokassa ResultURL."""
 from __future__ import annotations
 
 import asyncio
-import html
 import logging
-from collections import deque
+import ipaddress
+from urllib.parse import urlsplit
+import time
+from collections import defaultdict, deque
+from dataclasses import dataclass
+from datetime import datetime, timezone
 
+import aiohttp
 from aiohttp import web
-from aiogram import Bot
+from sqlalchemy import select
 
-from app import repositories as repo
-from app import texts
 from app.config import get_settings
 from app.db.base import session_factory
-from app.services import notify
-from app.services.avito import AvitoError, get_avito
+from app.db.models import AvitoChat, AvitoProfile
+from app.robokassa_webhook import handle_robokassa_result
+from app.services.avito import AvitoError, client_for_profile
+from app.services.avito_secrets import webhook_hash
+from app.services.robokassa import robokassa_ready
+from app.services.support_transport import get_or_create_avito_user, queue_support_message
+from app.support.attachments import AVITO_IMAGE_LIMIT, StoredFile, discard
 
 logger = logging.getLogger(__name__)
+_RATE_WINDOW = 60
+_RATE_LIMIT = 120
+_RATE_MAX_KEYS = 4096
+_requests: dict[str, deque[float]] = defaultdict(deque)
+_webhook_concurrency = asyncio.Semaphore(20)
+WEBHOOK_ROUTE = "/avito/webhook/{secret}"
 
-# Webhooks are delivered at-least-once — keep a bounded set of handled ids.
-_SEEN_LIMIT = 4096
-_seen: deque[str] = deque(maxlen=_SEEN_LIMIT)
-_seen_set: set[str] = set()
+
+@dataclass(frozen=True)
+class ProfileRef:
+    """What the message handler needs from an ``AvitoProfile`` (detached from the session)."""
+
+    id: int
+    slug: str
+    account_id: int | None
 
 
-def _remember(message_id: str) -> bool:
-    """True if this message id was not processed before."""
-    if message_id in _seen_set:
-        return False
-    if len(_seen) == _seen.maxlen:
-        _seen_set.discard(_seen[0])
-    _seen.append(message_id)
-    _seen_set.add(message_id)
-    return True
+def _trusted_proxy(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    for value in get_settings().webhook_trusted_proxy_ips.replace(";", ",").split(","):
+        try:
+            if address in ipaddress.ip_network(value.strip(), strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _rate_key(request: web.Request) -> str:
+    remote = request.remote or "unknown"
+    try:
+        address = ipaddress.ip_address(remote)
+    except ValueError:
+        return remote
+    if address.is_loopback or _trusted_proxy(address):
+        forwarded = request.headers.get("X-Forwarded-For", "").split(",", 1)[0].strip()
+        if forwarded:
+            try:
+                return str(ipaddress.ip_address(forwarded))
+            except ValueError:
+                pass
+    return str(address)
+
+
+def _prune_rate_keys(now: float) -> None:
+    if len(_requests) <= _RATE_MAX_KEYS:
+        return
+    for key, attempts in list(_requests.items()):
+        if not attempts or attempts[-1] <= now - _RATE_WINDOW:
+            _requests.pop(key, None)
+    while len(_requests) > _RATE_MAX_KEYS:
+        _requests.pop(next(iter(_requests)))
+
+
+@web.middleware
+async def rate_limit(request: web.Request, handler) -> web.Response:
+    now = time.monotonic()
+    attempts = _requests[_rate_key(request)]
+    while attempts and attempts[0] <= now - _RATE_WINDOW:
+        attempts.popleft()
+    if len(attempts) >= _RATE_LIMIT:
+        return web.json_response({"error": "rate limit exceeded"}, status=429)
+    attempts.append(now)
+    _prune_rate_keys(now)
+    return await handler(request)
 
 
 def _extract_text(value: dict) -> str:
@@ -51,120 +98,208 @@ def _extract_text(value: dict) -> str:
         return (content.get("text") or "").strip()
     if kind is None:
         return ""
-    return texts.AVITO_ATTACHMENT.format(kind=kind)
+    return f"[вложение: {kind}]"
 
 
-async def process_avito_message(bot: Bot, value: dict) -> None:
-    """Route one incoming Avito message into the client's support thread."""
+class AvitoDownloadError(Exception):
+    pass
+
+
+def _largest_image_url(content: dict) -> str | None:
+    """URL of the biggest entry in ``content.image.sizes`` ({"640x480": url, ...})."""
+    sizes = (content.get("image") or {}).get("sizes") or {}
+    best: tuple[int, str] | None = None
+    for key, url in sizes.items():
+        if not isinstance(url, str) or not url:
+            continue
+        try:
+            w, h = (int(part) for part in str(key).lower().split("x", 1))
+            area = w * h
+        except ValueError:
+            area = 0
+        if best is None or area > best[0]:
+            best = (area, url)
+    return best[1] if best else None
+
+
+async def download_avito_image(url: str) -> bytes:
+    """GET an image from Avito's CDN: https only, 30 s, at most 10 MB."""
+    try:
+        parsed = urlsplit(url)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if (parsed.scheme != "https" or parsed.username is not None or parsed.password is not None
+                or parsed.port not in (None, 443) or not (host in {"avito.st", "avito.ru"} or host.endswith((".avito.st", ".avito.ru")))):
+            raise ValueError
+    except ValueError:
+        raise AvitoDownloadError("недопустимый адрес") from None
+
+    class PublicResolver(aiohttp.resolver.DefaultResolver):
+        async def resolve(self, host, port=0, family=0):
+            records = await super().resolve(host, port, family)
+            try:
+                if not records or any(not ipaddress.ip_address(r["host"]).is_global for r in records):
+                    raise AvitoDownloadError("недопустимый IP-адрес")
+            except ValueError:
+                raise AvitoDownloadError("недопустимый IP-адрес") from None
+            return records
+
+    timeout = aiohttp.ClientTimeout(total=30)
+    connector = aiohttp.TCPConnector(resolver=PublicResolver())
+    async with aiohttp.ClientSession(timeout=timeout, connector=connector, trust_env=False) as http:
+        async with http.get(url, allow_redirects=False) as response:
+            if response.status == 413:
+                raise AvitoDownloadError("файл слишком большой")
+            if response.status != 200:
+                raise AvitoDownloadError(f"HTTP {response.status}")
+            if response.content_length and response.content_length > AVITO_IMAGE_LIMIT:
+                raise AvitoDownloadError("файл больше 10 МБ")
+            data = bytearray()
+            async for chunk in response.content.iter_chunked(65536):
+                data += chunk
+                if len(data) > AVITO_IMAGE_LIMIT:
+                    raise AvitoDownloadError("файл больше 10 МБ")
+    return bytes(data)
+
+
+async def _avito_image(value: dict) -> tuple[str, list[StoredFile]]:
+    """Keep the provider URL, fetch and validate its content only when requested."""
+    url = _largest_image_url(value.get("content") or {})
+    if url is None:
+        return "[вложение: image, не загружено: нет ссылки]", []
+    return "", [StoredFile(kind="image", mime="image/jpeg", original_name="avito_image.jpg",
+                           size=0, sha256="", path="", remote_provider="avito_image", remote_id=url)]
+
+
+async def _avito_voice(value: dict, profile_id: int) -> tuple[str, list[StoredFile]]:
+    voice = ((value.get("content") or {}).get("voice") or {}).get("voice_id")
+    if not isinstance(voice, str) or not voice:
+        return "[вложение: voice, не загружено: нет идентификатора]", []
+    return "", [StoredFile(kind="voice", mime="audio/mp4", original_name="voice.mp4", size=0,
+                           sha256="", path="", remote_provider="avito_voice", remote_id=voice,
+                           remote_profile_id=profile_id)]
+
+
+async def process_avito_message(value: dict, profile: ProfileRef) -> None:
     chat_id = str(value.get("chat_id") or "")
-    if not chat_id:
-        return
     author_id = value.get("author_id") or value.get("user_id")
-    if author_id is None:
+    media_type = (value.get("content") or {}).get("type") or value.get("type")
+    is_image = media_type == "image"
+    is_voice = media_type == "voice"
+    body = "" if is_image or is_voice else _extract_text(value)
+    if not chat_id or author_id is None or (not body and not is_image and not is_voice):
         return
-    author_id = int(author_id)
-
-    avito = get_avito()
-    # Our own outgoing messages are echoed back by the webhook — ignore them.
-    if avito.account_id is not None and author_id == avito.account_id:
-        return
-
-    body = _extract_text(value)
-    if not body:
-        return
-
     try:
-        async with session_factory() as session:
-            user = await repo.get_or_create_avito_user(session, author_id, chat_id)
-            # Fill in the real name once, right after the first message.
-            if user.full_name.startswith("Avito "):
-                name = await avito.get_chat_user_name(chat_id)
-                if name:
-                    user.full_name = name
-            if user.is_banned:
-                await session.commit()
-                return
-            await notify.ensure_user_thread(bot, session, user)
-            header = texts.ADMIN_AVITO_MSG.format(
-                client=repo.display_name(user),
-                order_id=user.current_order_id or 0,
-            )
-            await notify.send_to_client_thread(
-                bot, session, f"{header}\n{html.escape(body)}", user
-            )
+        author_id = int(author_id)
+    except (TypeError, ValueError):
+        logger.warning("Ignoring Avito message with invalid author_id: %r", author_id)
+        return
+    if profile.account_id is not None and author_id == profile.account_id:
+        return  # our own message echoed back
+    files: list[StoredFile] = []
+    if is_image:
+        body, files = await _avito_image(value)
+    elif is_voice:
+        body, files = await _avito_voice(value, profile.id)
+
+    async with session_factory() as session:
+        user = await get_or_create_avito_user(session, author_id, chat_id)
+        chat = await session.scalar(
+            select(AvitoChat).where(AvitoChat.profile_id == profile.id, AvitoChat.chat_id == chat_id)
+        )
+        if chat is None:
+            chat = AvitoChat(profile_id=profile.id, chat_id=chat_id, user_id=user.id)
+            session.add(chat)
+        chat.last_message_at = datetime.now(timezone.utc)
+        await session.flush()
+        if user.full_name.startswith("Avito "):
+            name = await _chat_user_name(session, profile.id, chat_id)
+            if name:
+                user.full_name = name
+        if user.is_banned:
             await session.commit()
-    except AvitoError as exc:
-        logger.warning("Avito API error while relaying chat %s: %s", chat_id, exc)
-    except Exception:
-        logger.exception("Failed to relay Avito message from chat %s", chat_id)
+            discard(files)
+            return
+        event = await queue_support_message(
+            session,
+            user,
+            body,
+            order_id=user.current_order_id,
+            external_id=f"avito:{profile.id}:{value.get('id')}",
+            attachments=files,
+            avito_chat_ref=chat.id,
+        )
+        await session.commit()
+        if event is None:
+            discard(files)
 
 
-async def _safe_process(bot: Bot, value: dict) -> None:
+async def _chat_user_name(session, profile_id: int, chat_id: str) -> str | None:
+    profile = await session.get(AvitoProfile, profile_id)
+    if profile is None:
+        return None
     try:
-        await process_avito_message(bot, value)
-    except Exception:
-        logger.exception("Unexpected error in Avito webhook processing")
+        return await client_for_profile(profile).get_chat_user_name(chat_id)
+    except AvitoError:
+        return None
 
 
-async def handle_webhook(request: web.Request) -> web.Response:
-    try:
-        data = await request.json()
-    except Exception:
-        return web.json_response({"error": "bad json"}, status=400)
+async def find_profile(secret: str) -> ProfileRef | None:
+    """Enabled profile whose webhook secret hashes to ``sha256(secret)``."""
+    if not secret:
+        return None
+    async with session_factory() as session:
+        profile = await session.scalar(
+            select(AvitoProfile).where(AvitoProfile.webhook_secret_hash == webhook_hash(secret))
+        )
+        if profile is None or not profile.enabled:
+            return None
+        return ProfileRef(profile.id, profile.slug, profile.account_id)
 
-    payload = data.get("payload") or {}
-    if payload.get("type") != "message":
-        return web.json_response({"ok": True})
-    value = payload.get("value") or {}
-    message_id = str(value.get("id") or "")
-    if message_id and not _remember(message_id):
-        return web.json_response({"ok": True})
 
-    bot: Bot = request.app["bot"]
-    # Answer Avito immediately; process asynchronously.
-    asyncio.create_task(_safe_process(bot, value))
+async def health(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
-async def start_avito_webhook(bot: Bot) -> web.AppRunner | None:
-    """Start the webhook HTTP server and subscribe the URL, if configured.
+async def handle_webhook(request: web.Request) -> web.Response:
+    profile = await find_profile(request.match_info.get("secret", ""))
+    if profile is None:
+        return web.json_response({"error": "not found"}, status=404)
+    async with _webhook_concurrency:
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "bad json"}, status=400)
+        payload = data.get("payload") or {}
+        if payload.get("type") != "message":
+            return web.json_response({"ok": True})
+        value = payload.get("value") or {}
+        if not value.get("id"):
+            return web.json_response({"error": "missing message id"}, status=400)
+        try:
+            await process_avito_message(value, profile)
+        except Exception:
+            logger.exception("Could not persist Avito webhook %s (profile %s)", value.get("id"), profile.slug)
+            return web.json_response({"error": "temporary storage error"}, status=503)
+        return web.json_response({"ok": True})
 
-    Returns the runner (caller must ``.cleanup()`` it on shutdown) or ``None``
-    when the Avito integration is disabled / incomplete.
-    """
+
+def create_web_application() -> web.Application:
+    app = web.Application(client_max_size=1_048_576, middlewares=[rate_limit])
+    app.router.add_get("/health", health)
+    # Profiles are added from the site at any time, so the route always exists;
+    # an unknown or disabled profile secret answers 404.
+    app.router.add_post(WEBHOOK_ROUTE, handle_webhook)
+    if robokassa_ready():
+        app.router.add_get("/robokassa/result", handle_robokassa_result)
+        app.router.add_post("/robokassa/result", handle_robokassa_result)
+    return app
+
+
+async def start_web_server() -> web.AppRunner:
     settings = get_settings()
-    avito = get_avito()
-    if not avito.enabled:
-        return None
-    if not settings.avito_webhook_url:
-        logger.warning(
-            "Avito credentials are set but AVITO_WEBHOOK_URL is empty — incoming "
-            "Avito messages will NOT be received. Set it to the public HTTPS "
-            "address of this machine."
-        )
-        return None
-
-    app = web.Application()
-    app["bot"] = bot
-    app.router.add_post(settings.avito_webhook_path, handle_webhook)
-
-    runner = web.AppRunner(app)
+    runner = web.AppRunner(create_web_application())
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=settings.avito_webhook_port)
     await site.start()
-    logger.info(
-        "Avito webhook server listening on 0.0.0.0:%s%s",
-        settings.avito_webhook_port,
-        settings.avito_webhook_path,
-    )
-
-    try:
-        await avito.subscribe_webhook(settings.avito_subscription_url)
-    except Exception as exc:
-        logger.error(
-            "Could not subscribe the Avito webhook (%s): %s — incoming messages "
-            "will not arrive until subscription succeeds",
-            settings.avito_subscription_url,
-            exc,
-        )
+    logger.info("Webhook server listening on port %s", settings.avito_webhook_port)
     return runner

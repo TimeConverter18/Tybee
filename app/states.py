@@ -14,9 +14,8 @@ class UserState(str, Enum):
     AWAIT_ARTICLE = "await_article"
     AWAIT_PERSONAL = "await_personal"
     DIALOG = "dialog"
-    # Admin is entering a new catalog article via the /admin panel.
+    # Legacy Telegram-admin states, reset to MENU on startup after the panel migration.
     ADMIN_ADD_PRODUCT = "admin_add_product"
-    # Admin is importing catalog articles from an xlsx file.
     ADMIN_IMPORT_PRODUCTS = "admin_import_products"
-    # Admin is entering a new Mystery Box variant via the /admin panel.
     ADMIN_ADD_BOX = "admin_add_box"
+    ADMIN_BROADCAST = "admin_broadcast"

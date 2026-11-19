@@ -2,36 +2,69 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    bot_token: str
-    # Stored as raw strings to avoid pydantic-settings JSON-decoding env values.
-    admin_ids_raw: str = Field(default="", validation_alias="ADMIN_IDS")
-    support_chat_id: int | None = None
+    # Used ONLY to create covers/default/config.yaml on first start; afterwards
+    # every cover (including "default") takes its token from its config.yaml.
+    bot_token: str = Field(
+        default="", validation_alias=AliasChoices("TYBEE_BOT_TOKEN", "TAIBI_BOT_TOKEN", "BOT_TOKEN")
+    )
+    admin_ids_raw: str = Field(
+        default="", validation_alias=AliasChoices("TYBEE_ADMIN_IDS", "TAIBI_ADMIN_ID", "ADMIN_IDS")
+    )
 
-    # Payment requisites shown to the client when an invoice is issued. If empty,
-    # a sensible placeholder from texts is used.
-    payment_requisites: str = ""
-    # Fine (in Telegram Stars, XTR) a banned user must pay to get unblocked.
-    unban_fine_stars: int = 50
+    unban_fine_rub: int = 50
+    profile_orders_limit: int = Field(default=10, ge=1)
+    support_shift_offline_minutes: int = Field(default=3, ge=1)
+    support_shift_idle_minutes: int = Field(default=15, ge=1)
+    support_shift_no_reply_minutes: int = Field(default=10, ge=1)
 
-    # Avito Messenger API integration. Master switch: the integration only
-    # starts when AVITO_ENABLED=true AND the credentials below are filled in.
+    # Multi-cover setup: every cover is a folder under covers_root with its own
+    # config.yaml (token, texts, buttons, statuses) and banners/.
+    covers_root: str = "./covers"
+    # Cover whose bot is used for service work shared by all covers
+    # (e.g. downloading legacy product photos).
+    support_cover_slug: str = "default"
+    covers_reload_sec: int = 10
+    # Runtime data (product photos) kept on disk, mounted as a volume.
+    data_dir: str = "./data"
+
+    # Web panel (site/). The login bot is a separate bot used only for the
+    # Telegram Login Widget; it does not need polling.
+    web_port: int = 8000
+    web_admin_ids_raw: str = Field(default="", validation_alias="WEB_ADMIN_IDS")
+    web_login_bot_token: str = ""
+    web_login_bot_username: str = ""
+    web_session_secret: str = ""
+    web_public_url: str = ""
+    web_dev_login: bool = Field(default=False, validation_alias=AliasChoices("WEB_DEV_LOGIN", "DEV"))
+    web_cookie_secure: bool = False
+    web_forwarded_allow_ips: str = Field(default="127.0.0.1,::1", validation_alias="FORWARDED_ALLOW_IPS")
+
+    # Legacy single-account Avito settings: used ONLY once, to create the
+    # "default" Avito profile (ТЗ-2, C.2). Profiles are managed on the site.
     avito_enabled: bool = False
     avito_client_id: str = ""
     avito_client_secret: str = ""
-    # Public HTTPS base URL Avito can reach, e.g. https://bot.example.com.
-    # The webhook is served at {avito_webhook_url}/avito/webhook/{secret}.
     avito_webhook_url: str = ""
-    # Secret path segment protecting the webhook endpoint.
     avito_webhook_secret: str = ""
-    # Local port the webhook HTTP server listens on.
     avito_webhook_port: int = 8080
+    webhook_trusted_proxy_ips: str = ""
+    # Fernet key (32 bytes, urlsafe base64) encrypting Avito client secrets in the DB.
+    # Needed by both processes (bot: decrypt for API calls; site: encrypt on save).
+    avito_secret_key: str = ""
+
+    robokassa_shop_id: str = ""
+    robokassa_password1: str = ""
+    robokassa_password2: str = ""
+    robokassa_hash_algorithm: str = "MD5"
+    robokassa_test: bool = True
 
     postgres_host: str = "db"
     postgres_port: int = 5432
@@ -39,17 +72,11 @@ class Settings(BaseSettings):
     postgres_user: str = "taibi"
     postgres_password: str = "taibi"
 
-    @field_validator("support_chat_id", mode="before")
+    @field_validator(
+        "avito_enabled", "robokassa_test", "web_dev_login", "web_cookie_secure", mode="before"
+    )
     @classmethod
-    def _parse_support_chat_id(cls, value: object) -> object:
-        if isinstance(value, str) and not value.strip():
-            return None
-        return value
-
-    @field_validator("avito_enabled", mode="before")
-    @classmethod
-    def _parse_avito_enabled(cls, value: object) -> object:
-        # An empty AVITO_ENABLED= in .env must mean "off", not a parse error.
+    def _parse_optional_bool(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
             return False
         return value
@@ -63,32 +90,23 @@ class Settings(BaseSettings):
         ]
 
     @property
-    def database_url(self) -> str:
-        return (
-            f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+    def web_admin_ids(self) -> list[int]:
+        return [
+            int(part)
+            for part in self.web_admin_ids_raw.replace(";", ",").split(",")
+            if part.strip()
+        ]
+
+    @property
+    def database_url(self) -> URL:
+        return URL.create(
+            "postgresql+asyncpg",
+            username=self.postgres_user,
+            password=self.postgres_password,
+            host=self.postgres_host,
+            port=self.postgres_port,
+            database=self.postgres_db,
         )
-
-    @property
-    def avito_ready(self) -> bool:
-        """True when the Avito integration may start (toggle + credentials)."""
-        return self.avito_enabled and bool(self.avito_client_id and self.avito_client_secret)
-
-    @property
-    def avito_webhook_path(self) -> str:
-        secret = self.avito_webhook_secret.strip()
-        return f"/avito/webhook/{secret}" if secret else "/avito/webhook"
-
-    @property
-    def avito_subscription_url(self) -> str:
-        return f"{self.avito_webhook_url.rstrip('/')}{self.avito_webhook_path}"
-
-    @property
-    def support_target(self) -> int | None:
-        if self.support_chat_id is not None:
-            return self.support_chat_id
-        admins = self.admin_ids
-        return admins[0] if admins else None
 
 
 @lru_cache
