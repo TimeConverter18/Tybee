@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalog.common import CatalogError
@@ -75,4 +75,17 @@ async def recipients(
 
 
 async def count_recipients(session: AsyncSession, cover_ids: list[int]) -> int:
-    return len(await recipients(session, cover_ids))
+    if not cover_ids:
+        return 0
+    return int(
+        await session.scalar(
+            select(func.count(func.distinct(User.id)))
+            .join(UserCover, UserCover.user_id == User.id)
+            .where(
+                UserCover.cover_id.in_(cover_ids),
+                User.source == "telegram",
+                User.is_banned.is_(False),
+            )
+        )
+        or 0
+    )

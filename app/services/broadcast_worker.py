@@ -21,7 +21,7 @@ from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, Telegra
 from aiogram.types import FSInputFile
 from sqlalchemy import case, select
 
-from app.catalog.broadcast import Recipient, recipients, resolve_cover_ids
+from app.catalog.broadcast import Recipient, count_recipients, recipients, resolve_cover_ids
 from app.covers import registry
 from app.db import base as db_base
 from app.db.models import Broadcast, Cover
@@ -89,7 +89,7 @@ async def run_broadcast(broadcast_id: int, bot_for: BotProvider | None = None, s
         if b.status == "queued":
             b.status = "running"
             b.started_at = _now()
-            b.total = len(await recipients(session, covers))
+            b.total = await count_recipients(session, covers)
             await session.commit()
         body, image_rel = b.body, b.image_path
         cursor = b.cursor_user_id

@@ -166,14 +166,25 @@ async def _thread_rows(
     if cover_ids:
         slugs = dict((await session.execute(select(Cover.id, Cover.slug).where(Cover.id.in_(cover_ids)))).all())
     last = {}
-    previews: dict[int, tuple[str, int | None]] = {}
-    for t in threads:
-        row = (await session.execute(
-            select(SupportThreadMessage.body, SupportThreadMessage.cover_id)
-            .where(SupportThreadMessage.thread_id == t.id)
-            .order_by(SupportThreadMessage.id.desc()).limit(1)
-        )).first()
-        previews[t.id] = ((row[0] or ""), row[1]) if row else ("", None)
+    previews: dict[int, tuple[str, int | None]] = {t.id: ("", None) for t in threads}
+    ranked_messages = (
+        select(
+            SupportThreadMessage.thread_id,
+            SupportThreadMessage.body,
+            SupportThreadMessage.cover_id,
+            func.row_number()
+            .over(partition_by=SupportThreadMessage.thread_id, order_by=SupportThreadMessage.id.desc())
+            .label("rn"),
+        )
+        .where(SupportThreadMessage.thread_id.in_(previews))
+        .subquery()
+    )
+    latest = await session.execute(
+        select(ranked_messages.c.thread_id, ranked_messages.c.body, ranked_messages.c.cover_id)
+        .where(ranked_messages.c.rn == 1)
+    )
+    for thread_id, body, cover_id in latest:
+        previews[thread_id] = (body or "", cover_id)
     preview_cover_ids = {cover_id for _, cover_id in previews.values() if cover_id}
     if preview_cover_ids:
         slugs.update(dict((await session.execute(
@@ -425,15 +436,32 @@ async def _shift_state(session: AsyncSession, me: Staff) -> dict[str, Any]:
 async def agents(
     _: Staff = Depends(require_perm(Perm.SUPPORT_CHAT)), session: AsyncSession = Depends(get_session)
 ):
-    rows = []
-    for s in await session.scalars(select(Staff).where(Staff.is_active.is_(True)).order_by(Staff.display_name)):
-        if Perm.SUPPORT_CHAT not in perms_of(s):
-            continue
-        load = await session.scalar(
-            select(func.count()).select_from(SupportThread).where(SupportThread.assigned_to == s.telegram_id, SupportThread.status == "open")
+    members = [
+        staff
+        for staff in await session.scalars(select(Staff).where(Staff.is_active.is_(True)).order_by(Staff.display_name))
+        if Perm.SUPPORT_CHAT in perms_of(staff)
+    ]
+    staff_ids = [staff.telegram_id for staff in members]
+    loads = {}
+    if staff_ids:
+        loads = dict(
+            (
+                await session.execute(
+                    select(SupportThread.assigned_to, func.count())
+                    .where(SupportThread.assigned_to.in_(staff_ids), SupportThread.status == "open")
+                    .group_by(SupportThread.assigned_to)
+                )
+            ).all()
         )
-        rows.append({"telegram_id": s.telegram_id, "display_name": s.display_name, "on_shift": s.on_shift, "open": int(load or 0)})
-    return rows
+    return [
+        {
+            "telegram_id": staff.telegram_id,
+            "display_name": staff.display_name,
+            "on_shift": staff.on_shift,
+            "open": int(loads.get(staff.telegram_id, 0)),
+        }
+        for staff in members
+    ]
 
 
 @router.get("/support/threads/{thread_id}")

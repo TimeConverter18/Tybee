@@ -212,7 +212,7 @@ panel.example.com {
 | Avito | `AVITO_SECRET_KEY`, `AVITO_WEBHOOK_URL`, `AVITO_WEBHOOK_PORT` и устаревшие настройки одного профиля `AVITO_ENABLED`, `AVITO_CLIENT_ID`, `AVITO_CLIENT_SECRET`, `AVITO_WEBHOOK_SECRET`. Подключение ведёт другая команда. |
 | Robokassa | `ROBOKASSA_SHOP_ID`, `ROBOKASSA_PASSWORD1`, `ROBOKASSA_PASSWORD2`, `ROBOKASSA_HASH_ALGORITHM`, `ROBOKASSA_TEST`. Подключение ведёт другая команда. |
 
-`TYBEE_ADMIN_IDS` оставлена для совместимости; управление сотрудниками и правами выполняется на сайте через `WEB_ADMIN_IDS` и роли сотрудников.
+Доступ сотрудников и администраторов настраивается через `WEB_ADMIN_IDS`, приглашения и роли на сайте. Старые `TYBEE_ADMIN_IDS`, `TAIBI_ADMIN_ID` и `ADMIN_IDS` игнорируются.
 
 ## Управление обложками
 
