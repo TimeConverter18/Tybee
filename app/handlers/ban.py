@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.covers.loader import cover_text, cover_unban_fine
 from app.db.models import User, UserCover
 from app.keyboards import inline
-from app.services.robokassa import build_payment_link, create_unban_payment, robokassa_ready
+from app.services.robokassa import build_payment_link, create_unban_payment, load_robokassa_config
 
 router = Router(name="ban")
 
@@ -21,7 +21,8 @@ async def request_unban_payment(
     if not user.is_banned:
         await call.answer(cover_text(cid, "ANSWER_BAN_LIFTED"), show_alert=True)
         return
-    if not robokassa_ready():
+    config = await load_robokassa_config(session)
+    if not config.ready:
         await call.answer(cover_text(cid, "ANSWER_PAYMENT_UNAVAILABLE"), show_alert=True)
         return
     payment = await create_unban_payment(session, user, cover_id=cid, amount=cover_unban_fine(cid))
@@ -29,6 +30,7 @@ async def request_unban_payment(
         payment.id,
         payment.amount,
         cover_text(cid, "UNBAN_PAYMENT_DESCRIPTION", user_id=user.id),
+        config=config,
     )
     if url is None:
         await call.answer(cover_text(cid, "ANSWER_PAYMENT_UNAVAILABLE"), show_alert=True)

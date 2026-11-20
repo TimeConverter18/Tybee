@@ -23,8 +23,7 @@ from app.robokassa_webhook import (
     handle_robokassa_success,
 )
 from app.services.avito import AvitoError, client_for_profile
-from app.services.avito_secrets import webhook_hash
-from app.services.robokassa import robokassa_ready
+from app.services.secret_box import webhook_hash
 from app.services.support_transport import get_or_create_avito_user, queue_support_message
 from app.support.attachments import AVITO_IMAGE_LIMIT, StoredFile, discard
 
@@ -293,11 +292,10 @@ def create_web_application() -> web.Application:
     # Profiles are added from the site at any time, so the route always exists;
     # an unknown or disabled profile secret answers 404.
     app.router.add_post(WEBHOOK_ROUTE, handle_webhook)
-    if robokassa_ready():
-        app.router.add_get("/robokassa/result", handle_robokassa_result)
-        app.router.add_post("/robokassa/result", handle_robokassa_result)
-        app.router.add_get("/robokassa/success", handle_robokassa_success)
-        app.router.add_get("/robokassa/fail", handle_robokassa_fail)
+    app.router.add_get("/robokassa/result", handle_robokassa_result)
+    app.router.add_post("/robokassa/result", handle_robokassa_result)
+    app.router.add_get("/robokassa/success", handle_robokassa_success)
+    app.router.add_get("/robokassa/fail", handle_robokassa_fail)
     return app
 
 
@@ -305,7 +303,7 @@ async def start_web_server() -> web.AppRunner:
     settings = get_settings()
     runner = web.AppRunner(create_web_application())
     await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=settings.avito_webhook_port)
+    site = web.TCPSite(runner, host="0.0.0.0", port=settings.webhook_port)
     await site.start()
-    logger.info("Webhook server listening on port %s", settings.avito_webhook_port)
+    logger.info("Webhook server listening on port %s", settings.webhook_port)
     return runner

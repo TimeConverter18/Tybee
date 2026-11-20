@@ -9,16 +9,16 @@ import re
 import secrets
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
-from app.db.models import AvitoChat, AvitoProfile, Staff
+from app.db.models import AvitoChat, AvitoProfile, AvitoSettings, Staff
 from app.services.avito import AvitoClient, AvitoError
-from app.services.avito_secrets import AvitoKeyError, decrypt_secret, encrypt_secret, key_configured, webhook_hash
+from app.services.secret_box import SecretBoxError, decrypt_secret, encrypt_secret, key_configured, webhook_hash
 from panel.audit import write_audit
 from panel.auth import csrf_guard, require_perm
 from panel.deps import get_session
@@ -50,7 +50,7 @@ def _json(p: AvitoProfile, clients: int = 0) -> dict[str, Any]:
 def _encrypt(value: str) -> str:
     try:
         return encrypt_secret(value)
-    except AvitoKeyError as exc:
+    except SecretBoxError as exc:
         raise HTTPException(503, str(exc)) from None
 
 
@@ -66,6 +66,46 @@ def _touch(profile: AvitoProfile) -> None:
     profile.updated_at = datetime.now(timezone.utc)
 
 
+async def _webhook_base(session: AsyncSession) -> str:
+    row = await session.get(AvitoSettings, 1)
+    return row.webhook_base.rstrip("/") if row is not None else ""
+
+
+class WebhookBody(BaseModel):
+    webhook_base: str = Field(default="", max_length=2048)
+
+
+@router.put("/settings")
+async def set_avito_settings(
+    body: WebhookBody,
+    me: Staff = Depends(manage),
+    session: AsyncSession = Depends(get_session),
+):
+    base = body.webhook_base.strip().rstrip("/")
+    if base:
+        try:
+            parsed = urlsplit(base)
+        except ValueError:
+            raise HTTPException(422, "Некорректный адрес webhook") from None
+        if (
+            parsed.scheme not in ("http", "https")
+            or not parsed.netloc
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise HTTPException(422, "Укажите базовый адрес вида https://panel.example.com")
+    row = await session.get(AvitoSettings, 1, with_for_update=True)
+    if row is None:
+        row = AvitoSettings(id=1)
+        session.add(row)
+    row.webhook_base = base
+    row.updated_by = me.telegram_id
+    await write_audit(session, me, "avito.settings.update", None, {"webhook_base": base})
+    await session.commit()
+    return {"webhook_base": base or None}
+
+
 @router.get("/profiles")
 async def list_profiles(_: Staff = Depends(manage), session: AsyncSession = Depends(get_session)):
     counts = dict(
@@ -74,10 +114,9 @@ async def list_profiles(_: Staff = Depends(manage), session: AsyncSession = Depe
         )).all()
     )
     profiles = list(await session.scalars(select(AvitoProfile).order_by(AvitoProfile.id)))
-    settings = get_settings()
     return {
         "key_configured": key_configured(),
-        "webhook_base": settings.avito_webhook_url.rstrip("/") or None,
+        "webhook_base": await _webhook_base(session) or None,
         "profiles": [_json(p, int(counts.get(p.id, 0))) for p in profiles],
     }
 
@@ -148,7 +187,7 @@ async def update_profile(
 def _client(profile: AvitoProfile) -> AvitoClient:
     try:
         secret = decrypt_secret(profile.client_secret_enc)
-    except AvitoKeyError as exc:
+    except SecretBoxError as exc:
         raise HTTPException(503, str(exc)) from None
     return make_client(profile.client_id, secret, profile.account_id)
 
@@ -189,9 +228,9 @@ async def check_profile(profile_id: int, me: Staff = Depends(manage), session: A
 async def subscribe_webhook(profile_id: int, me: Staff = Depends(manage), session: AsyncSession = Depends(get_session)):
     """New random secret -> Avito ``subscribe`` -> store sha256(secret). The secret is returned once."""
     profile = await _get(session, profile_id)
-    base = get_settings().avito_webhook_url.rstrip("/")
+    base = await _webhook_base(session)
     if not base:
-        raise HTTPException(422, "AVITO_WEBHOOK_URL не задан: некуда подписывать вебхук")
+        raise HTTPException(422, "Сначала сохраните публичный адрес webhook в настройках Avito")
     secret = secrets.token_urlsafe(32)
     url = f"{base}/avito/webhook/{secret}"
     client = _client(profile)

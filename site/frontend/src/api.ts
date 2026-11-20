@@ -95,7 +95,7 @@ export const PAYOUT_STATUS: Record<string, { label: string; cls: string }> = {
 
 export const AUDIT_GROUPS: Record<string, string> = {
   auth: "Вход", staff: "Сотрудники", support: "Поддержка", finance: "Финансы", catalog: "Каталог",
-  cover: "Боты-обложки", avito: "Авито", broadcast: "Рассылки",
+  cover: "Боты-обложки", avito: "Авито", robokassa: "Robokassa", broadcast: "Рассылки",
 };
 export const AUDIT_ACTIONS: Record<string, string> = {
   "support.note": "Внутренняя заметка",
@@ -164,6 +164,8 @@ export const AUDIT_ACTIONS: Record<string, string> = {
   "avito.profile.disable": "Профиль Авито выключен",
   "avito.profile.check": "Проверка ключей Авито",
   "avito.profile.subscribe": "Подписка на уведомления Авито",
+  "avito.settings.update": "Изменён адрес webhook Авито",
+  "robokassa.update": "Изменены настройки Robokassa",
   "broadcast.create": "Запущена рассылка",
   "broadcast.test": "Тестовая рассылка себе",
   "broadcast.cancel": "Рассылка остановлена",
@@ -182,6 +184,7 @@ export const PERM_LABELS: Record<string, string> = {
   "orders.invoice": "Выставление счетов",
   "orders.operations.view": "Просмотр операций по заказам",
   "refunds.manage": "Возвраты",
+  "robokassa.manage": "Настройки Robokassa",
   "staff.manage": "Управление сотрудниками",
   "staff.view": "Просмотр сотрудников",
   "support.templates.manage": "Управление шаблонами ответов",

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import texts
 from app.db.base import session_factory
 from app.db.models import Cover, Order, RobokassaPayment, SupportOutbox, SupportThread, User
-from app.services.robokassa import valid_result_signature
+from app.services.robokassa import RobokassaConfig, load_robokassa_config, valid_result_signature
 from app.services.support_transport import queue_support_message
 
 _FULFILLMENT = {
@@ -94,10 +94,12 @@ async def _process_unban_payment(
     out_sum: str,
     inv_id: str,
     signature: str,
+    *,
+    config: RobokassaConfig,
 ) -> web.Response:
     if amount != Decimal(payment.amount):
         return web.Response(status=400, text="Invalid payment amount")
-    if not valid_result_signature(out_sum, inv_id, signature):
+    if not valid_result_signature(out_sum, inv_id, signature, config=config):
         return web.Response(status=403, text="Invalid signature")
     if payment.status == "paid":
         return web.Response(text=f"OK{payment.id}")
@@ -137,10 +139,13 @@ async def process_robokassa_result(params: dict[str, str]) -> web.Response:
         return web.Response(status=400, text="Invalid payment parameters")
 
     async with session_factory() as session:
+        config = await load_robokassa_config(session)
+        if not config.ready:
+            return web.Response(status=503, text="Robokassa is not configured")
         unban_payment = await session.scalar(select(RobokassaPayment).where(RobokassaPayment.id == order_id).with_for_update().execution_options(populate_existing=True))
         if unban_payment is not None:
             return await _process_unban_payment(
-                session, unban_payment, amount, out_sum, inv_id, signature
+                session, unban_payment, amount, out_sum, inv_id, signature, config=config
             )
 
         order = await session.scalar(select(Order).where(Order.id == order_id).with_for_update().execution_options(populate_existing=True))
@@ -148,7 +153,7 @@ async def process_robokassa_result(params: dict[str, str]) -> web.Response:
             return web.Response(status=404, text="Order not found")
         if order.price is None or amount != Decimal(order.price):
             return web.Response(status=400, text="Invalid payment amount")
-        if not valid_result_signature(out_sum, inv_id, signature):
+        if not valid_result_signature(out_sum, inv_id, signature, config=config):
             return web.Response(status=403, text="Invalid signature")
         if order.status == "approved" or order.status in _FULFILLMENT:
             return web.Response(text=f"OK{order.id}")

@@ -59,6 +59,15 @@ export default function Avito() {
   const [modal, setModal] = useState<"" | "new" | Profile>("");
   const [err, setErr] = useState("");
   const [secret, setSecret] = useState<Secret | null>(null);
+  const [webhookDraft, setWebhookDraft] = useState<string | null>(null);
+  const webhookSave = useMutation({
+    mutationFn: () => api("/api/avito/settings", json("PUT", { webhook_base: webhookDraft ?? "" })),
+    onSuccess: () => {
+      setWebhookDraft(null);
+      qc.invalidateQueries({ queryKey: ["avito"] });
+      toast("Адрес webhook сохранён");
+    },
+  });
   const act = useMutation({
     mutationFn: ({ p, path, body }: { p: Profile; path: string; body?: unknown }) =>
       body !== undefined ? api(`/api/avito/profiles/${p.id}${path}`, json("PATCH", body)) : api(`/api/avito/profiles/${p.id}${path}`, { method: "POST" }),
@@ -80,7 +89,7 @@ export default function Avito() {
       {d && !d.key_configured && (
         <p className="error">WEB_SESSION_SECRET не задан: профили Avito нельзя создавать и использовать. Задайте одинаковый WEB_SESSION_SECRET в .env обоих процессов (bot и site).</p>
       )}
-      {d && !d.webhook_base && <p className="muted">AVITO_WEBHOOK_URL не задан — подписать вебхук не получится.</p>}
+      {d && !d.webhook_base && <p className="muted">Публичный адрес webhook не задан — подписать профиль не получится.</p>}
       {err && <p className="error">{err}</p>}
       {secret && (
         <Card className="card">
@@ -90,6 +99,18 @@ export default function Avito() {
           <Button className="ghost" onClick={() => setSecret(null)}>Скрыть</Button>
         </Card>
       )}
+      {d && <Card className="card">
+        <h2>Публичный адрес webhook</h2>
+        <p className="muted">Общий адрес для всех профилей Avito. Секретный путь профиля будет добавлен автоматически.</p>
+        <form className="form" onSubmit={(e) => { e.preventDefault(); webhookSave.mutate(); }}>
+          <label>Базовый URL
+            <Input value={webhookDraft ?? d.webhook_base ?? ""} onChange={e => setWebhookDraft(e.target.value)} placeholder="https://support.tybee.ru" maxLength={2048} autoComplete="url" />
+          </label>
+          <p className="muted">Адрес сохраняется в PostgreSQL. Пути /avito/webhook/* должны проксироваться в процесс bot.</p>
+          {webhookSave.isError && <p className="error">{webhookSave.error.message}</p>}
+          <Button type="submit" disabled={webhookSave.isPending}>{webhookSave.isPending ? "Сохраняем…" : "Сохранить адрес"}</Button>
+        </form>
+      </Card>}
       <Table>
         <TableHeader><TableRow><TableHead>Профиль</TableHead><TableHead>Аккаунт</TableHead><TableHead>Клиентов</TableHead><TableHead>Вебхук</TableHead><TableHead>Включён</TableHead><TableHead /></TableRow></TableHeader>
         <TableBody>
