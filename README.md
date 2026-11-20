@@ -191,7 +191,7 @@ panel.example.com {
 
 ### Настройка Avito
 
-В разделе **«Avito»** администратор задаёт публичный базовый URL webhook и подключает профили своими `client_id` и `client_secret`. Секреты профилей шифруются общим `WEB_SESSION_SECRET` и не возвращаются через API. Адрес webhook и профили хранятся в PostgreSQL, поэтому переменные окружения для Avito не используются. После сохранения базового URL кнопка «Подписать вебхук» создаёт секретный адрес вида `<base>/avito/webhook/<random secret>`; пути `/avito/webhook/*` должны проксироваться в процесс `bot`.
+В разделе **«Avito»** администратор задаёт публичный базовый URL webhook и подключает профили своими `client_id` и `client_secret`. Секреты профилей шифруются общим `WEB_SESSION_SECRET` и не возвращаются через API. Адрес webhook и профили хранятся в PostgreSQL; из переменных окружения используется только сетевой `AVITO_WEBHOOK_PORT`. После сохранения базового URL кнопка «Подписать вебхук» создаёт секретный адрес вида `<base>/avito/webhook/<random secret>`; пути `/avito/webhook/*` должны проксироваться в процесс `bot`.
 
 ### Настройка Robokassa
 
@@ -251,7 +251,7 @@ panel.example.com {
 | Заказы | `PROFILE_ORDERS_LIMIT` — сколько последних заказов показывать в профиле, по умолчанию 10; `UNBAN_FINE_RUB` — общая сумма штрафа для обложек с настройкой `shared`. |
 | Смены | `SUPPORT_SHIFT_OFFLINE_MINUTES`, `SUPPORT_SHIFT_IDLE_MINUTES`, `SUPPORT_SHIFT_NO_REPLY_MINUTES` — пороги автоматического окончания смены. |
 | Панель | `WEB_PORT`, `WEB_ADMIN_IDS`, `WEB_LOGIN_BOT_TOKEN`, `WEB_LOGIN_BOT_USERNAME`, `WEB_SESSION_SECRET`, `WEB_PUBLIC_URL`, `DEV`, `WEB_COOKIE_SECURE`. |
-| Интеграции | `WEBHOOK_PORT` — порт HTTP-сервера бота для Avito и Robokassa; `WEBHOOK_TRUSTED_PROXY_IPS` — доверенные proxy. Профили, URL webhook и параметры оплаты задаются только в панели; старые `AVITO_*` и `ROBOKASSA_*` не используются. |
+| Интеграции | `AVITO_WEBHOOK_PORT` — порт HTTP-сервера бота для Avito и Robokassa; `WEBHOOK_TRUSTED_PROXY_IPS` — доверенные proxy. Профили, URL webhook и параметры оплаты задаются только в панели; остальные `AVITO_*` и все `ROBOKASSA_*` не используются. |
 
 Доступ сотрудников и администраторов настраивается через `WEB_ADMIN_IDS`, приглашения и роли на сайте. Старые `TYBEE_ADMIN_IDS`, `TAIBI_ADMIN_ID` и `ADMIN_IDS` игнорируются.
 

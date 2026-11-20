@@ -303,7 +303,7 @@ async def start_web_server() -> web.AppRunner:
     settings = get_settings()
     runner = web.AppRunner(create_web_application())
     await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=settings.webhook_port)
+    site = web.TCPSite(runner, host="0.0.0.0", port=settings.avito_webhook_port)
     await site.start()
-    logger.info("Webhook server listening on port %s", settings.webhook_port)
+    logger.info("Webhook server listening on port %s", settings.avito_webhook_port)
     return runner
