@@ -932,6 +932,7 @@ function Chat({ me, id }: { me: Me; id: number }) {
           <div className="row-actions">
             <Button className="ghost" onClick={() => setSearchOpen(!searchOpen)}>Поиск в чате</Button>
             <Button className="ghost" data-guide="client-button" onClick={() => setClientOpen(true)}>Клиент и заказы ({d.orders?.length ?? 0})</Button>
+            {canInvoice && (mine || d.can_refund) && <Button data-guide="invoice" onClick={() => setModal("invoice")}>Счёт</Button>}
             {d.assigned_to === null && <Button onClick={() => act.mutate({ path: `threads/${id}/claim` })}>Взять</Button>}
             {canAssign && <Button className="ghost" onClick={() => setModal("transfer")}>Передать</Button>}
             {mine && d.status === "open" && <Button className="ghost" onClick={() => confirm("Закрыть диалог? Клиент получит уведомление.") && act.mutate({ path: `threads/${id}/close` })}>Закрыть</Button>}

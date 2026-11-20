@@ -5,10 +5,6 @@ import logging
 import time
 
 import aiohttp
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.db import base as db_base
 from app.db.models import AvitoProfile
 from app.services.avito_secrets import decrypt_secret
 
@@ -198,24 +194,6 @@ def client_for_profile(profile: AvitoProfile) -> AvitoClient:
     client = AvitoClient(profile.client_id, secret, account_id=profile.account_id)
     _clients[profile.id] = (key, client)
     return client
-
-
-async def _load_profile(session: AsyncSession, profile_id: int | None) -> AvitoProfile:
-    if profile_id is None:
-        profile = await session.scalar(select(AvitoProfile).where(AvitoProfile.slug == "default"))
-    else:
-        profile = await session.get(AvitoProfile, profile_id)
-    if profile is None:
-        raise AvitoProfileUnavailable("профиль Avito не найден")
-    return profile
-
-
-async def get_avito(profile_id: int | None = None, session: AsyncSession | None = None) -> AvitoClient:
-    """Client of an Avito profile; without ``profile_id`` the ``default`` profile (compatibility)."""
-    if session is not None:
-        return client_for_profile(await _load_profile(session, profile_id))
-    async with db_base.session_factory() as own:
-        return client_for_profile(await _load_profile(own, profile_id))
 
 
 async def close_avito() -> None:

@@ -13,14 +13,9 @@ export const newRequestKey = () => {
 const blank = (): Draft => ({ text: "", requestKey: newRequestKey(), savedAt: 0 });
 
 export function useSupportDraft(staff: number, thread: number, mode: string, route: string) {
-  const legacyKey = `tybee:draft:${staff}:${thread}:${mode}`;
-  const key = `${legacyKey}:${route}`;
+  const key = `tybee:draft:${staff}:${thread}:${mode}:${route}`;
   const load = (): Draft => {
     try {
-      if (route !== "loading" && !localStorage.getItem(key) && localStorage.getItem(legacyKey)) {
-        localStorage.setItem(key, localStorage.getItem(legacyKey)!);
-        localStorage.removeItem(legacyKey);
-      }
       const value = JSON.parse(localStorage.getItem(key) ?? "null");
       if (value && typeof value.text === "string" && typeof value.requestKey === "string" && Date.now() - value.savedAt < 7 * 86400000) return value;
       localStorage.removeItem(key);
