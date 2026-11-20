@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     web_cookie_secure: bool = False
     web_forwarded_allow_ips: str = Field(default="127.0.0.1,::1", validation_alias="FORWARDED_ALLOW_IPS")
 
-    webhook_port: int = 8080
+    avito_webhook_port: int = 8080
     webhook_trusted_proxy_ips: str = ""
     # Integration secrets are managed on the site and encrypted with WEB_SESSION_SECRET.
 
