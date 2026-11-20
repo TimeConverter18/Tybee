@@ -4,11 +4,14 @@ import hashlib
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
+from aiohttp.test_utils import TestClient, TestServer
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.avito_webhook import create_web_application
 from app.db.base import Base
 from app.db.models import Order, RobokassaPayment, SupportInbox, SupportOutbox, User
 from app.robokassa_webhook import process_robokassa_result
@@ -39,12 +42,12 @@ class RobokassaTestCase(unittest.IsolatedAsyncioTestCase):
         await self.engine.dispose()
 
     async def test_valid_result_marks_order_paid_and_queues_notifications(self) -> None:
-        signature = hashlib.md5(b"100.00:150000000:pass2").hexdigest().upper()
+        signature = hashlib.md5(b"100.000000:150000000:pass2").hexdigest().upper()
         settings = SimpleNamespace(robokassa_password2="pass2", robokassa_hash_algorithm="MD5")
         with patch("app.robokassa_webhook.session_factory", self.factory):
             with patch("app.services.robokassa.get_settings", return_value=settings):
                 response = await process_robokassa_result(
-                    {"OutSum": "100.00", "InvId": "150000000", "SignatureValue": signature}
+                    {"OutSum": "100.000000", "InvId": "150000000", "SignatureValue": signature}
                 )
         self.assertEqual(response.status, 200)
         self.assertEqual(response.text, "OK150000000")
@@ -89,6 +92,43 @@ class RobokassaTestCase(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(repeated.id, payment.id)
             count = await session.scalar(select(func.count()).select_from(RobokassaPayment))
             self.assertEqual(count, 1)
+
+    async def test_payment_callback_and_return_routes(self) -> None:
+        with patch("app.avito_webhook.robokassa_ready", return_value=True):
+            app = create_web_application()
+        async with TestClient(TestServer(app)) as client:
+            for path, expected_text in (
+                ("/robokassa/success", "Оплата выполнена"),
+                ("/robokassa/fail", "Оплата не завершена"),
+            ):
+                response = await client.get(path)
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.content_type, "text/html")
+                self.assertIn(expected_text, await response.text())
+            response = await client.get("/robokassa/result")
+            self.assertEqual(response.status, 400)
+
+    def test_payment_link_uses_documented_signature(self) -> None:
+        settings = SimpleNamespace(
+            robokassa_shop_id="shop",
+            robokassa_password1="pass1",
+            robokassa_password2="pass2",
+            robokassa_hash_algorithm="MD5",
+            robokassa_test=False,
+        )
+        with patch("app.services.robokassa.get_settings", return_value=settings):
+            link = build_payment_link(150_000_000, 100, "Order")
+            settings.robokassa_test = True
+            test_link = build_payment_link(150_000_001, 100, "Order")
+
+        query = parse_qs(urlparse(link).query)
+        expected = hashlib.md5(b"shop:100.00:150000000:pass1").hexdigest().upper()
+        self.assertEqual(query["MerchantLogin"], ["shop"])
+        self.assertEqual(query["OutSum"], ["100.00"])
+        self.assertEqual(query["InvId"], ["150000000"])
+        self.assertEqual(query["SignatureValue"], [expected])
+        self.assertNotIn("IsTest", query)
+        self.assertEqual(parse_qs(urlparse(test_link).query)["IsTest"], ["1"])
 
     def test_payment_link_rejects_missing_or_nonpositive_price(self) -> None:
         self.assertIsNone(build_payment_link(150_000_000, None, "Order"))

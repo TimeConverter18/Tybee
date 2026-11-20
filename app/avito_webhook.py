@@ -1,4 +1,4 @@
-"""aiohttp server of the bot process: Avito webhooks (one route for all profiles) and Robokassa ResultURL."""
+"""aiohttp server for Avito webhooks and Robokassa payment callbacks."""
 from __future__ import annotations
 
 import asyncio
@@ -17,7 +17,11 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.db.base import session_factory
 from app.db.models import AvitoChat, AvitoProfile
-from app.robokassa_webhook import handle_robokassa_result
+from app.robokassa_webhook import (
+    handle_robokassa_fail,
+    handle_robokassa_result,
+    handle_robokassa_success,
+)
 from app.services.avito import AvitoError, client_for_profile
 from app.services.avito_secrets import webhook_hash
 from app.services.robokassa import robokassa_ready
@@ -292,6 +296,8 @@ def create_web_application() -> web.Application:
     if robokassa_ready():
         app.router.add_get("/robokassa/result", handle_robokassa_result)
         app.router.add_post("/robokassa/result", handle_robokassa_result)
+        app.router.add_get("/robokassa/success", handle_robokassa_success)
+        app.router.add_get("/robokassa/fail", handle_robokassa_fail)
     return app
 
 
