@@ -597,7 +597,7 @@ class SupportAttachment(Base):
 
 class AvitoProfile(Base):
     """One Avito account connected from the site. ``client_secret_enc`` is Fernet-encrypted
-    (AVITO_SECRET_KEY); the webhook secret itself is never stored, only its sha256."""
+    (WEB_SESSION_SECRET); the webhook secret itself is never stored, only its sha256."""
 
     __tablename__ = "avito_profiles"
 

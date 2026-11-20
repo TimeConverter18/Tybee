@@ -78,7 +78,7 @@ export default function Avito() {
         <Button disabled={!d?.key_configured} onClick={() => setModal("new")}>Добавить профиль</Button>
       </div>
       {d && !d.key_configured && (
-        <p className="error">AVITO_SECRET_KEY не задан или неверный: профили нельзя создавать и использовать. Задайте ключ Fernet в .env обоих процессов (bot и site).</p>
+        <p className="error">WEB_SESSION_SECRET не задан: профили Avito нельзя создавать и использовать. Задайте одинаковый WEB_SESSION_SECRET в .env обоих процессов (bot и site).</p>
       )}
       {d && !d.webhook_base && <p className="muted">AVITO_WEBHOOK_URL не задан — подписать вебхук не получится.</p>}
       {err && <p className="error">{err}</p>}

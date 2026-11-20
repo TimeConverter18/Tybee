@@ -53,9 +53,7 @@ class Settings(BaseSettings):
     avito_webhook_secret: str = ""
     avito_webhook_port: int = 8080
     webhook_trusted_proxy_ips: str = ""
-    # Fernet key (32 bytes, urlsafe base64) encrypting Avito client secrets in the DB.
-    # Needed by both processes (bot: decrypt for API calls; site: encrypt on save).
-    avito_secret_key: str = ""
+    # Avito client secrets are encrypted with WEB_SESSION_SECRET shared by bot and site.
 
     robokassa_shop_id: str = ""
     robokassa_password1: str = ""
