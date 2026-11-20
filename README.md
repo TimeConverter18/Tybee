@@ -209,7 +209,7 @@ panel.example.com {
 | Заказы | `PROFILE_ORDERS_LIMIT` — сколько последних заказов показывать в профиле, по умолчанию 10; `UNBAN_FINE_RUB` — общая сумма штрафа для обложек с настройкой `shared`. |
 | Смены | `SUPPORT_SHIFT_OFFLINE_MINUTES`, `SUPPORT_SHIFT_IDLE_MINUTES`, `SUPPORT_SHIFT_NO_REPLY_MINUTES` — пороги автоматического окончания смены. |
 | Панель | `WEB_PORT`, `WEB_ADMIN_IDS`, `WEB_LOGIN_BOT_TOKEN`, `WEB_LOGIN_BOT_USERNAME`, `WEB_SESSION_SECRET`, `WEB_PUBLIC_URL`, `DEV`, `WEB_COOKIE_SECURE`. |
-| Avito | `AVITO_SECRET_KEY`, `AVITO_WEBHOOK_URL`, `AVITO_WEBHOOK_PORT` и устаревшие настройки одного профиля `AVITO_ENABLED`, `AVITO_CLIENT_ID`, `AVITO_CLIENT_SECRET`, `AVITO_WEBHOOK_SECRET`. Подключение ведёт другая команда. |
+| Avito | `AVITO_WEBHOOK_URL`, `AVITO_WEBHOOK_PORT` и устаревшие настройки одного профиля `AVITO_ENABLED`, `AVITO_CLIENT_ID`, `AVITO_CLIENT_SECRET`, `AVITO_WEBHOOK_SECRET`. Секреты профилей шифруются общим `WEB_SESSION_SECRET`. Подключение ведёт другая команда. |
 | Robokassa | `ROBOKASSA_SHOP_ID`, `ROBOKASSA_PASSWORD1`, `ROBOKASSA_PASSWORD2`, `ROBOKASSA_HASH_ALGORITHM`, `ROBOKASSA_TEST`. Подключение ведёт другая команда. |
 
 Доступ сотрудников и администраторов настраивается через `WEB_ADMIN_IDS`, приглашения и роли на сайте. Старые `TYBEE_ADMIN_IDS`, `TAIBI_ADMIN_ID` и `ADMIN_IDS` игнорируются.

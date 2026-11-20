@@ -193,7 +193,7 @@ def client_for_profile(profile: AvitoProfile) -> AvitoClient:
     _drop(profile.id)
     try:
         secret = decrypt_secret(profile.client_secret_enc)
-    except Exception as exc:  # noqa: BLE001 - AvitoKeyError: no/changed AVITO_SECRET_KEY
+    except Exception as exc:  # noqa: BLE001 - AvitoKeyError: no/changed encryption key
         raise AvitoProfileUnavailable(f"профиль Avito {profile.slug} недоступен: {exc}") from exc
     client = AvitoClient(profile.client_id, secret, account_id=profile.account_id)
     _clients[profile.id] = (key, client)

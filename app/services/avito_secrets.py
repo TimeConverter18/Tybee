@@ -1,6 +1,7 @@
-"""Encryption of Avito client secrets at rest (Fernet, key from AVITO_SECRET_KEY)."""
+"""Encryption of Avito client secrets at rest using WEB_SESSION_SECRET."""
 from __future__ import annotations
 
+import base64
 import hashlib
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -9,17 +10,15 @@ from app.config import get_settings
 
 
 class AvitoKeyError(RuntimeError):
-    """AVITO_SECRET_KEY is missing/invalid or a stored secret cannot be decrypted."""
+    """WEB_SESSION_SECRET is missing or a stored secret cannot be decrypted."""
 
 
 def _fernet() -> Fernet:
-    key = get_settings().avito_secret_key.strip()
-    if not key:
-        raise AvitoKeyError("AVITO_SECRET_KEY не задан: профили Avito нельзя создавать и использовать")
-    try:
-        return Fernet(key.encode())
-    except (ValueError, TypeError) as exc:
-        raise AvitoKeyError("AVITO_SECRET_KEY неверный: нужен ключ Fernet (32 байта в urlsafe base64)") from exc
+    secret = get_settings().web_session_secret.strip()
+    if not secret:
+        raise AvitoKeyError("WEB_SESSION_SECRET не задан: профили Avito нельзя создавать и использовать")
+    key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
+    return Fernet(key)
 
 
 def key_configured() -> bool:
@@ -38,7 +37,7 @@ def decrypt_secret(token: str) -> str:
     try:
         return _fernet().decrypt(token.encode()).decode()
     except InvalidToken as exc:
-        raise AvitoKeyError("не удалось расшифровать client_secret (сменился AVITO_SECRET_KEY?)") from exc
+        raise AvitoKeyError("не удалось расшифровать client_secret (сменился WEB_SESSION_SECRET?)") from exc
 
 
 def webhook_hash(secret: str) -> str:
