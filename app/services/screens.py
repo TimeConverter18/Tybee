@@ -36,7 +36,7 @@ async def show_menu(
 
 async def show_payment(bot: Bot, session: AsyncSession, user: User, uc: UserCover, order) -> None:
     cid = uc.cover_id
-    url = payment_link(order)
+    url = await payment_link(session, order)
     if url is None:
         await show_screen(
             bot,

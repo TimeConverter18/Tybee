@@ -24,6 +24,7 @@ class Perm(str, Enum):
     FINANCE_PAYOUTS_PAY = "finance.payouts.pay"
     FINANCE_ANALYTICS = "finance.analytics"
     AVITO_MANAGE = "avito.manage"
+    ROBOKASSA_MANAGE = "robokassa.manage"
     CATALOG_MANAGE = "catalog.manage"
     BROADCAST_SEND = "broadcast.send"
 

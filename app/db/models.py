@@ -204,6 +204,21 @@ class SupportOutbox(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class RobokassaSettings(Base):
+    __tablename__ = "robokassa_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    shop_id: Mapped[str] = mapped_column(String(64), default="")
+    password1_enc: Mapped[str] = mapped_column(Text, default="")
+    password2_enc: Mapped[str] = mapped_column(Text, default="")
+    hash_algorithm: Mapped[str] = mapped_column(String(16), default="MD5")
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_by: Mapped[int | None] = mapped_column(BigInteger)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class RobokassaPayment(Base):
     __tablename__ = "robokassa_payments"
 
@@ -592,6 +607,17 @@ class SupportAttachment(Base):
     sha256: Mapped[str] = mapped_column(String(64))
     path: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), default=func.now())
+
+
+class AvitoSettings(Base):
+    __tablename__ = "avito_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    webhook_base: Mapped[str] = mapped_column(Text, default="")
+    updated_by: Mapped[int | None] = mapped_column(BigInteger)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class AvitoProfile(Base):

@@ -12,7 +12,7 @@ from app.covers import registry
 from app.covers.loader import init_default_cover
 from app.covers.service import upgrade_all_covers
 from app.covers.supervisor import Supervisor
-from app.db.base import init_models, migrate_avito_profiles, session_factory
+from app.db.base import init_models, session_factory
 from app.db.seed import reset_admin_states
 from app.handlers import build_router
 from app.middlewares import DbSessionMiddleware
@@ -60,7 +60,6 @@ def _setup_logging() -> None:
 async def run() -> None:
     _setup_logging()
     await init_models()
-    await migrate_avito_profiles()
     await reset_admin_states()
     if init_default_cover():
         logger.info("Created %s/default from the bundled template", get_settings().covers_root)

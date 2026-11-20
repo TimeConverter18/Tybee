@@ -2,17 +2,22 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import secrets
+from dataclasses import dataclass
 from urllib.parse import urlencode
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db.models import Order, RobokassaPayment, User
+from app.db.models import Order, RobokassaPayment, RobokassaSettings, User
+from app.services.secret_box import SecretBoxError, decrypt_secret
+
+logger = logging.getLogger(__name__)
 
 _PAYMENT_URL = "https://auth.robokassa.ru/Merchant/Index.aspx"
-_ALGORITHMS = {
+HASH_ALGORITHMS = {
     "MD5": "md5",
     "SHA1": "sha1",
     "SHA256": "sha256",
@@ -20,55 +25,103 @@ _ALGORITHMS = {
 }
 
 
-def robokassa_ready() -> bool:
-    settings = get_settings()
-    return bool(
-        settings.robokassa_shop_id.strip()
-        and settings.robokassa_password1
-        and settings.robokassa_password2
+@dataclass(frozen=True)
+class RobokassaConfig:
+    shop_id: str
+    password1: str
+    password2: str
+    hash_algorithm: str
+    test: bool
+
+    @property
+    def ready(self) -> bool:
+        return bool(self.shop_id and self.password1 and self.password2)
+
+
+def empty_robokassa_config() -> RobokassaConfig:
+    return RobokassaConfig(
+        shop_id="",
+        password1="",
+        password2="",
+        hash_algorithm="MD5",
+        test=False,
     )
 
 
-def _hash_name() -> str:
-    normalized = get_settings().robokassa_hash_algorithm.upper().replace("-", "")
+async def load_robokassa_config(session: AsyncSession) -> RobokassaConfig:
+    row = await session.get(RobokassaSettings, 1)
+    if row is None:
+        return empty_robokassa_config()
     try:
-        return _ALGORITHMS[normalized]
+        password1 = decrypt_secret(row.password1_enc) if row.password1_enc else ""
+        password2 = decrypt_secret(row.password2_enc) if row.password2_enc else ""
+    except SecretBoxError as exc:
+        logger.error("Could not decrypt Robokassa settings: %s", exc)
+        password1 = password2 = ""
+    return RobokassaConfig(
+        shop_id=row.shop_id.strip(),
+        password1=password1,
+        password2=password2,
+        hash_algorithm=row.hash_algorithm.strip(),
+        test=row.is_test,
+    )
+
+
+def _hash_name(config: RobokassaConfig) -> str:
+    normalized = config.hash_algorithm.upper().replace("-", "")
+    try:
+        return HASH_ALGORITHMS[normalized]
     except KeyError as exc:
         raise RuntimeError(f"Unsupported Robokassa hash algorithm: {normalized}") from exc
 
 
-def _signature(value: str) -> str:
-    return hashlib.new(_hash_name(), value.encode("utf-8")).hexdigest().upper()
+def _signature(value: str, config: RobokassaConfig) -> str:
+    return hashlib.new(_hash_name(config), value.encode("utf-8")).hexdigest().upper()
 
 
-def build_payment_link(invoice_id: int, amount: int | None, description: str) -> str | None:
-    if amount is None or amount <= 0 or not robokassa_ready():
+def build_payment_link(
+    invoice_id: int,
+    amount: int | None,
+    description: str,
+    *,
+    config: RobokassaConfig | None = None,
+) -> str | None:
+    config = config or empty_robokassa_config()
+    if amount is None or amount <= 0 or not config.ready:
         return None
-    settings = get_settings()
     out_sum = f"{amount:.2f}"
     invoice = str(invoice_id)
     signature = _signature(
-        f"{settings.robokassa_shop_id}:{out_sum}:{invoice}:{settings.robokassa_password1}"
+        f"{config.shop_id}:{out_sum}:{invoice}:{config.password1}", config
     )
     query = {
-        "MerchantLogin": settings.robokassa_shop_id,
+        "MerchantLogin": config.shop_id,
         "OutSum": out_sum,
         "InvId": invoice,
         "Description": description[:100],
         "SignatureValue": signature,
         "Culture": "ru",
     }
-    if settings.robokassa_test:
+    if config.test:
         query["IsTest"] = "1"
     return f"{_PAYMENT_URL}?{urlencode(query)}"
 
 
-def payment_link(order: Order) -> str | None:
-    return build_payment_link(order.id, order.price, order.title or f"Заказ #{order.id}")
+async def payment_link(session: AsyncSession, order: Order) -> str | None:
+    config = await load_robokassa_config(session)
+    return build_payment_link(
+        order.id, order.price, order.title or f"Заказ #{order.id}", config=config
+    )
 
 
-def valid_result_signature(out_sum: str, inv_id: str, signature: str) -> bool:
-    expected = _signature(f"{out_sum}:{inv_id}:{get_settings().robokassa_password2}")
+def valid_result_signature(
+    out_sum: str,
+    inv_id: str,
+    signature: str,
+    *,
+    config: RobokassaConfig,
+) -> bool:
+    expected = _signature(f"{out_sum}:{inv_id}:{config.password2}", config)
     return hmac.compare_digest(expected, signature.upper())
 
 
@@ -87,7 +140,7 @@ async def create_unban_payment(
     )
     if existing is not None:
         if cover_id is not None:
-            existing.cover_id = cover_id  # confirmation goes to the cover paid from
+            existing.cover_id = cover_id
         return existing
     while True:
         invoice_id = secrets.randbelow(100_000_000) + 2_000_000_001

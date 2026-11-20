@@ -150,7 +150,7 @@ async def _deliver_avito(
         await _deliver_avito_file(avito, chat_id, event, attachment, text)
         return
     if event.kind == "invoice" and order is not None:
-        url = payment_link(order)
+        url = await payment_link(session, order)
         if url is None:
             body = texts.PAYMENT_UNAVAILABLE
         else:
@@ -167,7 +167,7 @@ async def _deliver_avito(
             title=order.title or "Заказ",
             status=texts.STATUS_LABELS.get(order.status, order.status),
         )
-        url = payment_link(order) if order.status == "awaiting_payment" else None
+        url = await payment_link(session, order) if order.status == "awaiting_payment" else None
         if url:
             body += f"\n\nСсылка на оплату: {url}"
     else:
@@ -204,7 +204,7 @@ async def _deliver_telegram_file(bot: Bot, user: User, event: SupportOutbox, att
 
 
 async def _deliver_telegram(
-    bot: Bot, cid: int, event: SupportOutbox, user: User, order: Order | None,
+    session, bot: Bot, cid: int, event: SupportOutbox, user: User, order: Order | None,
     attachment: Attachment | None = None,
 ) -> None:
     """Send one queued message to a Telegram client through the cover's bot."""
@@ -212,7 +212,7 @@ async def _deliver_telegram(
         await _deliver_telegram_file(bot, user, event, attachment)
         return
     if event.kind == "invoice" and order is not None:
-        url = payment_link(order)
+        url = await payment_link(session, order)
         if url is None:
             await bot.send_message(
                 user.id,
@@ -264,7 +264,7 @@ async def _deliver_telegram(
         )
         markup = None
         if order.status == "awaiting_payment":
-            url = payment_link(order)
+            url = await payment_link(session, order)
             markup = inline.payment_reminder(cid, url)
         await bot.send_message(user.id, text, parse_mode="HTML", reply_markup=markup)
         return
@@ -409,7 +409,7 @@ async def _route_telegram(
     try:
         if attachment is not None:
             attachment[0].remote_cover_id = cid
-        await _deliver_telegram(bot, cid, event, user, order, attachment)
+        await _deliver_telegram(session, bot, cid, event, user, order, attachment)
     except TelegramForbiddenError as exc:
         # Telegram tells us *why* the bot cannot write; the operator needs the
         # difference between "blocked", "never pressed /start" and a deleted account.

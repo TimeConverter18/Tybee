@@ -17,7 +17,21 @@ from app.covers.service import CoverError
 from app.db import base as db_base
 from panel import auth, login_bot, support_worker, support_events
 from urllib.parse import urlsplit
-from panel.routes import avito, broadcasts, catalog, covers, finance, invites, staff, support, login_settings, logistics, payroll, leaderboard
+from panel.routes import (
+    avito,
+    broadcasts,
+    catalog,
+    covers,
+    finance,
+    invites,
+    leaderboard,
+    logistics,
+    login_settings,
+    payroll,
+    robokassa,
+    staff,
+    support,
+)
 
 logger = logging.getLogger(__name__)
 DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
@@ -133,6 +147,7 @@ def create_app() -> FastAPI:
     app.include_router(leaderboard.router)
     app.include_router(logistics.router)
     app.include_router(avito.router)
+    app.include_router(robokassa.router)
     app.include_router(catalog.router)
     app.include_router(broadcasts.router)
 

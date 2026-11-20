@@ -44,22 +44,9 @@ class Settings(BaseSettings):
     web_cookie_secure: bool = False
     web_forwarded_allow_ips: str = Field(default="127.0.0.1,::1", validation_alias="FORWARDED_ALLOW_IPS")
 
-    # Legacy single-account Avito settings: used ONLY once, to create the
-    # "default" Avito profile (ТЗ-2, C.2). Profiles are managed on the site.
-    avito_enabled: bool = False
-    avito_client_id: str = ""
-    avito_client_secret: str = ""
-    avito_webhook_url: str = ""
-    avito_webhook_secret: str = ""
-    avito_webhook_port: int = 8080
+    webhook_port: int = 8080
     webhook_trusted_proxy_ips: str = ""
-    # Avito client secrets are encrypted with WEB_SESSION_SECRET shared by bot and site.
-
-    robokassa_shop_id: str = ""
-    robokassa_password1: str = ""
-    robokassa_password2: str = ""
-    robokassa_hash_algorithm: str = "MD5"
-    robokassa_test: bool = False
+    # Integration secrets are managed on the site and encrypted with WEB_SESSION_SECRET.
 
     postgres_host: str = "db"
     postgres_port: int = 5432
@@ -67,9 +54,7 @@ class Settings(BaseSettings):
     postgres_user: str = "taibi"
     postgres_password: str = "taibi"
 
-    @field_validator(
-        "avito_enabled", "robokassa_test", "web_dev_login", "web_cookie_secure", mode="before"
-    )
+    @field_validator("web_dev_login", "web_cookie_secure", mode="before")
     @classmethod
     def _parse_optional_bool(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
