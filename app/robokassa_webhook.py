@@ -27,6 +27,33 @@ _FULFILLMENT = {
 _REFUNDS = {"refund_pending", "refunded"}
 
 
+def _payment_page(title: str, message: str) -> web.Response:
+    return web.Response(
+        text=(
+            "<!doctype html><html lang=\"ru\"><head><meta charset=\"utf-8\">"
+            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+            f"<title>{title}</title></head>"
+            "<body style=\"font-family:sans-serif;max-width:640px;margin:15vh auto;padding:24px;text-align:center\">"
+            f"<h1>{title}</h1><p>{message}</p></body></html>"
+        ),
+        content_type="text/html",
+    )
+
+
+async def handle_robokassa_success(_request: web.Request) -> web.Response:
+    return _payment_page(
+        "Оплата выполнена",
+        "Подтверждение заказа и его дальнейший статус придут в Telegram. Эту страницу можно закрыть.",
+    )
+
+
+async def handle_robokassa_fail(_request: web.Request) -> web.Response:
+    return _payment_page(
+        "Оплата не завершена",
+        "Вернитесь в Telegram и попробуйте оплатить заказ ещё раз. Эту страницу можно закрыть.",
+    )
+
+
 async def _paid_after_cancel(session: AsyncSession, order: Order) -> web.Response:
     """ТЗ-2, B.4: money arrived for a cancelled order -> accept it and start a refund."""
     user = await session.get(User, order.user_id)

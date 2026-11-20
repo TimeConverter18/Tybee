@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     robokassa_password1: str = ""
     robokassa_password2: str = ""
     robokassa_hash_algorithm: str = "MD5"
-    robokassa_test: bool = True
+    robokassa_test: bool = False
 
     postgres_host: str = "db"
     postgres_port: int = 5432
