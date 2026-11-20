@@ -169,6 +169,8 @@ docker compose -f docker-compose.yml -f compose.server.yml up -d --build
 
 При использовании второго файла применяйте те же `-f` к последующим командам Compose. Не включайте `DEV` на доступном извне сервере: этот режим позволяет войти без подтверждения Telegram под любым активным сотрудником, включая администратора.
 
+### HTTPS-прокси
+
 HTTPS-прокси должен направлять Robokassa и Avito в процесс бота, а остальное — в панель. Пример Caddyfile для сервисов Compose:
 
 ```caddy
@@ -185,7 +187,11 @@ panel.example.com {
 }
 ```
 
-В личном кабинете Robokassa откройте «Мои магазины» → «Технические настройки» и укажите:
+Если proxy работает в другом контейнере, укажите его IP или Docker-подсеть в `WEBHOOK_TRUSTED_PROXY_IPS`, чтобы rate-limit различал клиентов по `X-Forwarded-For`. Для Uvicorn панели доверенные proxy задаются через `FORWARDED_ALLOW_IPS`. На первом обновлении существующей базы запускайте процессы последовательно: сначала `bot`, после успешной миграции и создания обложки — `site`. Не заменяйте существующий production PostgreSQL сервисом `db` из репозиторного Compose.
+
+### Настройка Robokassa
+
+Активируйте магазин в Robokassa. Затем откройте «Мои магазины» → «Технические настройки» и укажите публичный HTTPS-адрес панели:
 
 | Настройка | Значение | Метод |
 | --- | --- | --- |
@@ -193,11 +199,40 @@ panel.example.com {
 | Success URL | `https://<host>/robokassa/success` | `GET` |
 | Fail URL | `https://<host>/robokassa/fail` | `GET` |
 
-`ROBOKASSA_SHOP_ID` должен совпадать с идентификатором магазина, а `ROBOKASSA_HASH_ALGORITHM` — с алгоритмом в кабинете. Для боевого режима установите `ROBOKASSA_TEST=false` и используйте боевые Пароль №1 и Пароль №2. Для `ROBOKASSA_TEST=true` нужна отдельная тестовая пара паролей: боевые пароли с `IsTest=1` вызывают у Robokassa ошибку 29 (неверная `SignatureValue`). После изменения настроек пересоздайте сервис `bot`.
+Все три пути должны проксироваться в процесс `bot`, а не в `site`. Настройки в `environment` сервиса `bot`:
+
+```yaml
+ROBOKASSA_SHOP_ID: ${MERCHANT_LOGIN}
+ROBOKASSA_PASSWORD1: ${PASSWORD_1}
+ROBOKASSA_PASSWORD2: ${PASSWORD_2}
+ROBOKASSA_HASH_ALGORITHM: ${ROBOKASSA_HASH_ALGORITHM:-MD5}
+ROBOKASSA_TEST: ${ROBOKASSA_TEST:-false}
+```
+
+`ROBOKASSA_SHOP_ID` должен совпадать с идентификатором магазина, а алгоритм — с выбранным в кабинете. Для боевого режима установите `ROBOKASSA_TEST=false` и используйте боевые Пароль №1 и Пароль №2. Для `ROBOKASSA_TEST=true` нужна отдельная тестовая пара паролей. Не оставляйте пробелы вокруг идентификатора, паролей и алгоритма.
+
+После изменения окружения обновите процесс и выставьте **новый** счёт:
+
+```bash
+docker compose pull bot
+docker compose up -d --force-recreate bot
+```
+
+Подпись и признак тестового режима уже содержатся в выданной ссылке, поэтому счета, созданные до исправления настроек, нужно перевыставить. `SuccessURL` и `FailURL` должны отвечать HTTP 200. Ответ HTTP 400 на открытый вручную `ResultURL` без параметров ожидаем: рабочее уведомление Robokassa содержит подпись и возвращает `OK<InvId>`.
+
+#### Ошибка 29 у Robokassa
+
+Ошибка 29 означает неверную `SignatureValue`. Проверьте в следующем порядке:
+
+1. Для `IsTest=1` используются тестовые пароли, а для боевого режима — боевые. Сочетание `IsTest=1` с боевыми паролями даёт ошибку 29.
+2. `MerchantLogin`, Пароль №1 и алгоритм хэша совпадают с техническими настройками магазина.
+3. После исправления конфигурации пересоздан `bot` и выставлен новый счёт, а не открыта старая ссылка.
+
+Код 25 означает, что магазин не активирован или идентификатор магазина некорректен; это другая ошибка.
 
 При создании счёта передаются обязательные `MerchantLogin`, `OutSum`, `SignatureValue`, а также рекомендуемые `InvId` и `Description`. Подпись строится как `MerchantLogin:OutSum:InvId:Пароль#1`; уведомление проверяется по `OutSum:InvId:Пароль#2`. Пользовательские `Shp_*` не используются. Параметр фискализации `Receipt` текущая интеграция не передаёт: если в магазине включены обязательные «Робочеки», потребуется отдельная настройка фискализации.
 
-Если proxy работает в другом контейнере, укажите его IP или Docker-подсеть в `WEBHOOK_TRUSTED_PROXY_IPS`, чтобы rate-limit различал клиентов по `X-Forwarded-For`. Для Uvicorn панели доверенные proxy задаются через `FORWARDED_ALLOW_IPS`. На первом обновлении существующей базы запускайте процессы последовательно: сначала `bot`, после успешной миграции и создания обложки — `site`. Не заменяйте существующий production PostgreSQL сервисом `db` из репозиторного Compose.
+Официальная документация: [интерфейс оплаты и коды ошибок](https://docs.robokassa.ru/ru/pay-interface), [уведомления и переадресация](https://docs.robokassa.ru/ru/notifications-and-redirects).
 
 ### Вход сотрудников
 
@@ -222,7 +257,7 @@ panel.example.com {
 | Смены | `SUPPORT_SHIFT_OFFLINE_MINUTES`, `SUPPORT_SHIFT_IDLE_MINUTES`, `SUPPORT_SHIFT_NO_REPLY_MINUTES` — пороги автоматического окончания смены. |
 | Панель | `WEB_PORT`, `WEB_ADMIN_IDS`, `WEB_LOGIN_BOT_TOKEN`, `WEB_LOGIN_BOT_USERNAME`, `WEB_SESSION_SECRET`, `WEB_PUBLIC_URL`, `DEV`, `WEB_COOKIE_SECURE`. |
 | Avito | `AVITO_WEBHOOK_URL`, `AVITO_WEBHOOK_PORT` и устаревшие настройки одного профиля `AVITO_ENABLED`, `AVITO_CLIENT_ID`, `AVITO_CLIENT_SECRET`, `AVITO_WEBHOOK_SECRET`. Секреты профилей шифруются общим `WEB_SESSION_SECRET`. Подключение ведёт другая команда. |
-| Robokassa | `ROBOKASSA_SHOP_ID`, `ROBOKASSA_PASSWORD1`, `ROBOKASSA_PASSWORD2`, `ROBOKASSA_HASH_ALGORITHM`, `ROBOKASSA_TEST`. Адреса и режимы описаны в разделе о HTTPS-прокси. |
+| Robokassa | `ROBOKASSA_SHOP_ID`, `ROBOKASSA_PASSWORD1`, `ROBOKASSA_PASSWORD2`, `ROBOKASSA_HASH_ALGORITHM`, `ROBOKASSA_TEST`. См. [«Настройка Robokassa»](#настройка-robokassa). |
 
 Доступ сотрудников и администраторов настраивается через `WEB_ADMIN_IDS`, приглашения и роли на сайте. Старые `TYBEE_ADMIN_IDS`, `TAIBI_ADMIN_ID` и `ADMIN_IDS` игнорируются.
 
