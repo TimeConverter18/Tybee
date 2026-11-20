@@ -3,10 +3,6 @@ from __future__ import annotations
 from enum import Enum
 from pathlib import Path
 
-# Bundled banners: used only to seed covers/default (see init_default_cover).
-ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "banners"
-
-
 class Banner(str, Enum):
     WELCOME = "welcome"
     PROFILE = "profile"
