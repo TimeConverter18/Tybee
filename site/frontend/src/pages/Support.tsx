@@ -54,10 +54,14 @@ type Stale = {
   updated_at: string | null; last_ping_at: string | null; thread_id: number; client: string; can_ping: boolean;
 };
 type Attachment = { id: number; kind: string; mime: string; name: string; size: number; is_image: boolean; url: string; ephemeral: boolean; available: boolean; direction: "in" | "out" };
+type MsgOrder = {
+  id: number; title: string; description: string | null; article: string | null; price: number | null;
+  type: string; type_label: string; status: string; status_label: string;
+};
 type Msg = {
   id: number; direction: "client" | "staff" | "system" | "internal"; kind: string; body: string; staff_name: string | null;
   created_at: string | null; delivery: "pending" | "sent" | "failed" | "uncertain" | null; can_retry: boolean; error: string | null;
-  attachments: Attachment[]; channel_label: string | null; cover: string | null;
+  attachments: Attachment[]; channel_label: string | null; cover: string | null; order: MsgOrder | null;
 };
 
 const fmtSize = (n: number) =>
@@ -989,7 +993,14 @@ function Chat({ me, id }: { me: Me; id: number }) {
               {(m.direction === "staff" || m.direction === "internal") && <small className="muted">{m.staff_name}</small>}
               {m.direction === "internal" && <small className="sup-note-label">Внутренняя заметка · клиент её не видит</small>}
               {m.channel_label && <small className="muted">{m.channel_label}</small>}
-              {(m.body || !m.attachments?.length) && <div className="bubble">{m.body}</div>}
+              {(m.body || m.order || !m.attachments?.length) && <div className="bubble">
+                {m.order && <div className="msg-order-context">
+                  <div className="msg-order-title"><b>{m.order.title}</b><span>{m.order.status_label}</span></div>
+                  <small>Заказ #{m.order.id}{m.order.article && ` · арт. ${m.order.article}`} · {m.order.type_label}{m.order.price !== null && ` · ${m.order.price} ₽`}</small>
+                  {m.order.description && <p>{m.order.description}</p>}
+                </div>}
+                {m.body && <div>{m.body}</div>}
+              </div>}
               {(m.attachments ?? []).map((a) => <AttachmentView key={a.id} a={a} />)}
               <small className="muted msg-meta">
                 {m.direction === "client" && m.cover && <span className="msg-service" title="Обложка, через которую писал клиент">{m.cover}</span>}
