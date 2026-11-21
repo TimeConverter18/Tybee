@@ -396,6 +396,149 @@ async def report(session: AsyncSession, period: str, staff_ids: list[int] | None
     }
 
 
+
+# ---------------------------------------------------------- instant accruals (TZ-06)
+async def _instant_already_credited(session: AsyncSession, staff_id: int, marker: str) -> bool:
+    return bool(
+        await session.scalar(
+            select(FinanceOperation.id).where(
+                FinanceOperation.staff_id == staff_id,
+                FinanceOperation.comment.like(f"%{marker}%"),
+            ).limit(1)
+        )
+    )
+
+
+async def _instant_rates(session: AsyncSession, staff_id: int, period: str, config: dict[str, int]) -> tuple[int, int]:
+    lo, hi = period_range(period)
+    _, avg_chars = await _messages(session, staff_id, lo, hi)
+    _, waits = await _accepted_clients(session, staff_id, lo, hi)
+    quality = _score(waits, avg_chars, config)
+    msg_rate = int(config["msg_rate_min_kop"] + (config["msg_rate_max_kop"] - config["msg_rate_min_kop"]) * quality.coefficient + 0.5)
+    client_rate = int(config["client_rate_min_kop"] + (config["client_rate_max_kop"] - config["client_rate_min_kop"]) * quality.coefficient + 0.5)
+    return msg_rate, client_rate
+
+
+async def credit_message(session: AsyncSession, staff_id: int, message_id: int, thread_id: int) -> None:
+    """Immediately credit the staff virtual balance for an outgoing message (and new-client acceptance if first reply)."""
+    staff = await session.get(Staff, staff_id)
+    if staff is None or not staff.is_active or staff.role not in SUPPORT_ROLES:
+        return
+    period = current_period()
+    config = await get_config(session)
+    msg_rate, client_rate = await _instant_rates(session, staff_id, period, config)
+
+    msg_marker = f"[auto:msg:{message_id}]"
+    if msg_rate > 0 and not await _instant_already_credited(session, staff_id, msg_marker):
+        session.add(
+            FinanceOperation(
+                staff_id=staff_id,
+                kind="salary",
+                amount_kop=msg_rate,
+                period=period,
+                comment=f"Сообщение в ветке #{thread_id} {msg_marker}",
+                created_by=None,
+            )
+        )
+
+    # First staff reply in a client-initiated thread -> credit new-client rate
+    client_marker = f"[auto:client:{thread_id}]"
+    if client_rate > 0 and not await _instant_already_credited(session, staff_id, client_marker):
+        is_initiated = await session.scalar(
+            select(SupportThreadMessage.id).where(
+                SupportThreadMessage.thread_id == thread_id,
+                SupportThreadMessage.direction == "system",
+                SupportThreadMessage.kind == "initiate",
+            ).limit(1)
+        )
+        prior_staff_msg = await session.scalar(
+            select(SupportThreadMessage.id).where(
+                SupportThreadMessage.thread_id == thread_id,
+                SupportThreadMessage.direction == "staff",
+                SupportThreadMessage.kind == "message",
+                SupportThreadMessage.id < message_id,
+            ).limit(1)
+        )
+        if not is_initiated and prior_staff_msg is None:
+            session.add(
+                FinanceOperation(
+                    staff_id=staff_id,
+                    kind="salary",
+                    amount_kop=client_rate,
+                    period=period,
+                    comment=f"Принят новый клиент (ветка #{thread_id}) {client_marker}",
+                    created_by=None,
+                )
+            )
+    await session.flush()
+
+
+async def credit_order_paid(session: AsyncSession, order: Order) -> None:
+    """Immediately credit the order premium to the responsible staff member's virtual balance."""
+    if not order.paid_staff_id or not order.paid_amount or order.paid_amount <= 0 or order.refunded_at is not None:
+        return
+    staff = await session.get(Staff, order.paid_staff_id)
+    if staff is None or not staff.is_active or staff.role not in SUPPORT_ROLES:
+        return
+    marker = f"[auto:order:{order.id}]"
+    if await _instant_already_credited(session, staff.telegram_id, marker):
+        return
+    config = await get_config(session)
+    bonus_kop = (int(order.paid_amount) * 100 * config["order_percent_bp"] + 5000) // 10000
+    if bonus_kop <= 0:
+        return
+    session.add(
+        FinanceOperation(
+            staff_id=staff.telegram_id,
+            kind="bonus",
+            amount_kop=bonus_kop,
+            period=current_period(),
+            comment=f"Премия за оплаченный заказ #{order.id} ({order.paid_amount} ₽) {marker}",
+            created_by=None,
+        )
+    )
+    await session.flush()
+
+
+async def credit_review(session: AsyncSession, review: SupportReview) -> None:
+    """Immediately credit the 5-star review bonus to the staff member's virtual balance."""
+    if not review.confirmed or review.rating < 5:
+        return
+    staff = await session.get(Staff, review.staff_id)
+    if staff is None or not staff.is_active or staff.role not in SUPPORT_ROLES:
+        return
+    marker = f"[auto:review:{review.id}]"
+    if await _instant_already_credited(session, staff.telegram_id, marker):
+        return
+    config = await get_config(session)
+    bonus_kop = int(config["review_bonus_kop"])
+    if bonus_kop <= 0:
+        return
+    session.add(
+        FinanceOperation(
+            staff_id=staff.telegram_id,
+            kind="bonus",
+            amount_kop=bonus_kop,
+            period=current_period(),
+            comment=f"Бонус за отзыв #{review.id} ({review.source}) {marker}",
+            created_by=review.created_by,
+        )
+    )
+    await session.flush()
+
+
+async def _already_auto_posted(session: AsyncSession, staff_id: int, period: str, kind: str) -> int:
+    total = await session.scalar(
+        select(func.coalesce(func.sum(FinanceOperation.amount_kop), 0)).where(
+            FinanceOperation.staff_id == staff_id,
+            FinanceOperation.period == period,
+            FinanceOperation.kind == kind,
+            FinanceOperation.comment.like("%[auto:%"),
+        )
+    )
+    return int(total or 0)
+
+
 # ----------------------------------------------------------------------- posting
 def _salary_comment(row: dict[str, Any]) -> str:
     parts = [f"оклад {rub(row['base_salary_kop'])} ₽"] if row["base_salary_kop"] else []
@@ -447,17 +590,25 @@ async def accrue(session: AsyncSession, actor_id: int, period: str, staff_ids: l
             skipped.append({"staff_id": member.telegram_id, "name": member.display_name, "reason": "нечего начислять"})
             continue
 
+        auto_salary = await _already_auto_posted(session, member.telegram_id, period, "salary")
+        auto_bonus = await _already_auto_posted(session, member.telegram_id, period, "bonus")
+        rem_salary = max(0, row["salary_kop"] - auto_salary)
+        rem_bonus = max(0, row["premium_gross_kop"] - auto_bonus)
+        if rem_salary <= 0 and rem_bonus <= 0:
+            skipped.append({"staff_id": member.telegram_id, "name": member.display_name, "reason": "уже начислено на баланс автоматически"})
+            continue
+
         salary_op = None
-        if row["salary_kop"] > 0:
+        if rem_salary > 0:
             salary_op = FinanceOperation(
-                staff_id=member.telegram_id, kind="salary", amount_kop=row["salary_kop"],
+                staff_id=member.telegram_id, kind="salary", amount_kop=rem_salary,
                 period=period, comment=_salary_comment(row), created_by=actor_id,
             )
             session.add(salary_op)
         bonus_op = None
-        if row["premium_gross_kop"] > 0:
+        if rem_bonus > 0:
             bonus_op = FinanceOperation(
-                staff_id=member.telegram_id, kind="bonus", amount_kop=row["premium_gross_kop"],
+                staff_id=member.telegram_id, kind="bonus", amount_kop=rem_bonus,
                 period=period, comment=_bonus_comment(row), created_by=actor_id,
             )
             session.add(bonus_op)
@@ -551,6 +702,7 @@ async def add_review(
     )
     session.add(review)
     await session.flush()
+    await credit_review(session, review)
     return review
 
 

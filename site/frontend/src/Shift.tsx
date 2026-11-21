@@ -82,7 +82,7 @@ function IdlePrompt({ leftSec, onHere }: { leftSec: number; onHere: () => void }
       <Card className="card modal idle-prompt" role="alertdialog" aria-labelledby="idle-title">
         <h2 id="idle-title">Вы на месте?</h2>
         <p>Давно не было активности в панели. Если не подтвердить, смена завершится через <b>{leftSec} с</b>,
-          а диалоги, ожидающие ответа, вернутся в очередь.</p>
+          но закреплённые за вами диалоги останутся за вами.</p>
         <div className="row-actions"><Button onClick={onHere} autoFocus>Я здесь</Button></div>
       </Card>
     </div>
@@ -187,13 +187,13 @@ export function ShiftControl() {
       {toggle.error && <small className="shift-note">{(toggle.error as Error).message}</small>}
       <Dialog open={endOpen} onOpenChange={setEndOpen}><DialogContent className="app-dialog" aria-describedby={undefined}>
         <DialogTitle>Завершение смены</DialogTitle>
-        <p>Ожидающие ответа диалоги и незавершённые шаги вернутся в общую очередь. Контекст и обещания сохранятся.</p>
+        <p>Закреплённые за вами диалоги останутся за вами и после выхода со смены. Ниже показаны активные обращения, требующие внимания.</p>
         {handoff.isLoading && <SkeletonText lines={2} />}
         {handoff.error && <p className="error">{handoff.error.message}</p>}
         <div className="shift-handoff-list">{handoff.data?.map((t) => <Link key={t.id} to={`/support/${t.id}`} onClick={() => setEndOpen(false)}><b>{t.client.name}</b><div>{t.needs_reply ? "Нужен ответ" : "Незавершённый шаг"}</div>{t.next_step && <div>{t.next_step}{t.due_at && ` · ${fmtDate(t.due_at)}`}</div>}</Link>)}</div>
         {handoff.data?.length === 0 && <p className="muted">Ожидающих ответа и незавершённых шагов нет.</p>}
         {toggle.error && <p className="error">{toggle.error.message}</p>}
-        <div className="row-actions"><Button className="ghost" onClick={() => setEndOpen(false)}>Продолжить смену</Button><Button disabled={toggle.isPending || !handoff.data} onClick={() => toggle.mutate(false)}>Завершить и вернуть в очередь</Button></div>
+        <div className="row-actions"><Button className="ghost" onClick={() => setEndOpen(false)}>Продолжить смену</Button><Button disabled={toggle.isPending || !handoff.data} onClick={() => toggle.mutate(false)}>Завершить смену</Button></div>
       </DialogContent></Dialog>
       {warn && <IdlePrompt leftSec={Math.max(0, Math.ceil((idleMs - idleFor) / 1000))} onHere={() => { beatNow(); setNow(Date.now()); }} />}
     </div>

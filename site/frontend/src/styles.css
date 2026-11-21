@@ -155,9 +155,10 @@ aside {
 .brand-logo-img {
   height: 25px; width: auto; max-width: 112px; display: block; object-fit: contain;
 }
-:root[data-theme="dark"] .brand-logo-link {
-  background: #ffffff;
-}
+.brand-logo-dark { display: none; }
+:root[data-theme="dark"] .brand-logo-light { display: none; }
+:root[data-theme="dark"] .brand-logo-dark { display: block; }
+:root[data-theme="dark"] .brand-logo-link { background: transparent; }
 .brand-cat-icon {
   width: 30px; height: 30px; object-fit: contain; flex-shrink: 0;
   filter: drop-shadow(0 2px 4px rgba(21, 107, 255, 0.28));
@@ -2027,4 +2028,161 @@ tr.is-clickable:focus-visible {
 }
 .ys-empty-action {
   margin-top: 6px;
+}
+
+
+/* ---------- TZ-07 payment filter chips ---------- */
+.sup-pay-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+.sup-pay-chip {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--sunken);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.sup-pay-chip:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+.sup-pay-chip.active {
+  background: var(--accent-tint, color-mix(in srgb, var(--accent) 14%, transparent));
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- TZ-13 orders drawer positioning & scroll fix ---------- */
+.app-dialog.sup-client-drawer {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: auto !important;
+  transform: none !important;
+  translate: 0 0 !important;
+  margin: 0 !important;
+  width: min(480px, 100vw);
+  max-width: 100vw !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  z-index: 60;
+  display: flex !important;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0 !important;
+}
+.sup-client-drawer .sup-client-heading {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  background: var(--card);
+}
+.sup-client-drawer .sup-side {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* ---------- TZ-12 & TZ-14 mobile header single-row & overflow fix ---------- */
+html, body, #root {
+  max-width: 100%;
+  overflow-x: clip;
+}
+.layout {
+  min-height: 100vh;
+  min-height: 100dvh;
+  max-width: 100%;
+}
+@media (max-width: 1000px) {
+  .layout > aside:not(.menu-open) {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)) !important;
+    overflow: hidden;
+  }
+  .layout > aside:not(.menu-open) > .brand {
+    order: 0;
+    min-width: 0;
+    flex: 0 1 auto;
+    gap: 6px;
+    padding: 0;
+  }
+  .layout > aside:not(.menu-open) > .brand .brand-logo-link {
+    padding: 2px 0;
+  }
+  .layout > aside:not(.menu-open) > .brand .brand-logo-img {
+    height: 22px;
+    max-width: 96px;
+  }
+  .layout > aside:not(.menu-open) > .shift {
+    display: none;
+  }
+  .layout > aside:not(.menu-open) > .me {
+    order: 1;
+    margin-left: auto;
+    flex: 0 0 auto;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+  }
+  .layout > aside:not(.menu-open) > .me .avatar,
+  .layout > aside:not(.menu-open) > .me .me-text {
+    display: none;
+  }
+  .layout > aside:not(.menu-open) > .me .me-theme {
+    display: inline-grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
+  }
+  .layout > aside:not(.menu-open) > .me button.logout {
+    width: 38px;
+    height: 38px;
+    min-height: 38px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 10px;
+  }
+  .layout > aside:not(.menu-open) > .me button.logout span {
+    display: none;
+  }
+  .layout > aside:not(.menu-open) > .mobile-menu-toggle {
+    display: grid;
+    place-items: center;
+    order: 2;
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--side-text);
+  }
+  .app-dialog.sup-client-drawer {
+    border-radius: 0 !important;
+  }
+}
+@media (max-width: 360px) {
+  .layout > aside:not(.menu-open) > .brand .brand-tag {
+    display: none;
+  }
 }

@@ -173,6 +173,8 @@ async def process_robokassa_result(params: dict[str, str]) -> web.Response:
         order.paid_staff_id = await session.scalar(
             select(SupportThread.assigned_to).where(SupportThread.user_id == order.user_id)
         )
+        from app.finance import payroll
+        await payroll.credit_order_paid(session, order)
         session.add(
             SupportOutbox(
                 user_id=order.user_id,

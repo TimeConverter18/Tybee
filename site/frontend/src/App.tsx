@@ -140,7 +140,7 @@ function Layout({ me }: { me: Me }) {
         {sectionsOpen && <div className="menu-backdrop" aria-hidden="true" onClick={() => setSectionsOpen(false)} />}
         <div className="brand">
           <a href="https://tybee.ru" target="_blank" rel="noreferrer" className="brand-logo-link" title="Перейти на сайт tybee.ru">
-            <img src="/logobig.png" alt="tybee" className="brand-logo-img" />
+            <img src="/logo-light.png" alt="tybee" className="brand-logo-img brand-logo-light" /><img src="/logo-dark.png" alt="tybee" className="brand-logo-img brand-logo-dark" />
           </a>
           <span className="brand-tag">панель</span>
           <ThemeToggle className="brand-theme" />
