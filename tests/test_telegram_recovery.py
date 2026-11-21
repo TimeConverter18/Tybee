@@ -39,7 +39,7 @@ def _fixture(root: Path) -> tuple[Path, Path]:
  <div class="body details">Tybee created topic &laquo;Client (@client) · 42&raquo;</div>
 </div>
 '''
-        + _message(101, "Tybee", "🧵 <strong>Ветка клиента</strong>")
+        + _message(101, "Tybee", "🧵 <strong>Ветка клиента</strong><br>Заказ #9001")
         + _message(102, "Tybee", "Client<br>question", media='<a href="photos/test.jpg">photo</a>')
         + _message(103, "Employee", "Answer"),
         encoding="utf-8",
@@ -76,6 +76,8 @@ class TelegramRecoveryTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stats["clients"], 1)
         self.assertEqual(stats["media"], 1)
         self.assertEqual(stats["media_missing"], 0)
+        self.assertEqual(stats["orders"], 1)
+        self.assertEqual(history[0].order_id, 9001)
 
     async def test_import_is_idempotent_and_keeps_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -86,6 +88,14 @@ class TelegramRecoveryTestCase(unittest.IsolatedAsyncioTestCase):
                 return_value=SimpleNamespace(data_dir=str(root / "data")),
             ):
                 first = await import_history(export, dump, execute=True, factory=self.factory)
+                async with self.factory() as session:
+                    existing = await session.scalar(
+                        select(SupportThreadMessage).where(
+                            SupportThreadMessage.request_key == "telegram-export:101"
+                        )
+                    )
+                    existing.order_id = None
+                    await session.commit()
                 second = await import_history(export, dump, execute=True, factory=self.factory)
                 self.assertEqual(first["imported"], 3)
                 self.assertEqual(first["attachments"], 1)
@@ -99,6 +109,8 @@ class TelegramRecoveryTestCase(unittest.IsolatedAsyncioTestCase):
                 messages = list(await session.scalars(select(SupportThreadMessage)))
                 self.assertEqual(len(messages), 3)
                 self.assertEqual(len({message.request_key for message in messages}), 3)
+                restored = next(message for message in messages if message.request_key == "telegram-export:101")
+                self.assertEqual(restored.order_id, 9001)
                 attachment = await session.scalar(select(SupportAttachment))
                 self.assertFalse(attachment.ephemeral)
                 self.assertEqual(attachment.direction, "in")
