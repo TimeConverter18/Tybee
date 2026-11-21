@@ -658,6 +658,11 @@ pre.details { margin: 6px 0 0; font: 12px/1.5 var(--mono); white-space: pre-wrap
 .msg-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .msg-service { color: var(--muted); opacity: .9; }
 .msg-service::after { content: "·"; margin-left: 6px; }
+.msg-order-context { display: flex; flex-direction: column; gap: 4px; margin: 0 0 7px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--sunken); color: var(--text); }
+.msg-order-context small { margin: 0; padding: 0; color: inherit; opacity: .8; }
+.msg-order-context p { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg-order-title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.msg-order-title span { flex-shrink: 0; font-size: 11px; opacity: .8; }
 .msg.staff { align-self: flex-end; align-items: flex-end; }
 .msg.system { align-self: center; align-items: center; max-width: 90%; }
 .bubble { background: var(--card); border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; padding: 8px 12px; white-space: pre-wrap; word-break: break-word; }

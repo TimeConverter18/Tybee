@@ -562,6 +562,20 @@ def _delivery(outbox: SupportOutbox | None) -> str | None:
     return "uncertain" if outbox.delivery_uncertain else ("failed" if outbox.last_error else "sent")
 
 
+def _message_order(order: Order) -> dict[str, Any]:
+    return {
+        "id": order.id,
+        "title": order.title or f"Заказ #{order.id}",
+        "description": order.description,
+        "article": order.article,
+        "price": order.price,
+        "type": order.type,
+        "type_label": ORDER_TYPE_LABELS.get(order.type, order.type),
+        "status": order.status,
+        "status_label": ORDER_STATUS_LABELS.get(order.status, order.status),
+    }
+
+
 @router.get("/support/threads/{thread_id}/messages")
 async def get_messages(
     thread_id: int,
@@ -600,6 +614,10 @@ async def get_messages(
         cover_slugs = dict((await session.execute(
             select(Cover.id, Cover.slug).where(Cover.id.in_(cover_ids))
         )).all())
+    order_ids = {m.order_id for m in rows if m.order_id is not None}
+    orders: dict[int, Order] = {}
+    if order_ids:
+        orders = {o.id: o for o in await session.scalars(select(Order).where(Order.id.in_(order_ids)))}
     by_message: dict[int, list[dict[str, Any]]] = {}
     if rows:
         for a in await session.scalars(
@@ -613,7 +631,9 @@ async def get_messages(
             "id": m.id, "direction": m.direction, "kind": m.kind,
             "body": _strip_cover_prefix(m.body, cover_slugs.get(m.cover_id)),
             "cover": cover_slugs.get(m.cover_id),
-            "staff_name": names.get(m.staff_id), "order_id": m.order_id, "created_at": _iso(m.created_at),
+            "staff_name": names.get(m.staff_id), "order_id": m.order_id,
+            "order": _message_order(orders[m.order_id]) if m.order_id in orders else None,
+            "created_at": _iso(m.created_at),
             "delivery": _delivery(outboxes.get(m.outbox_id)),
             "can_retry": bool(m.outbox_id and outboxes.get(m.outbox_id) and outboxes[m.outbox_id].processed_at and outboxes[m.outbox_id].last_error),
             "error": (outboxes[m.outbox_id].last_error if m.outbox_id in outboxes else None),
