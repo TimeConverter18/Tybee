@@ -19,6 +19,7 @@ const Finance = lazy(() => import("./pages/Finance"));
 const Leaders = lazy(() => import("./pages/Leaders"));
 const Avito = lazy(() => import("./pages/Avito"));
 const Robokassa = lazy(() => import("./pages/Robokassa"));
+const Recovery = lazy(() => import("./pages/Recovery"));
 const Catalog = lazy(() => import("./pages/Catalog"));
 const Broadcasts = lazy(() => import("./pages/Broadcasts"));
 const LoginBot = lazy(() => import("./pages/LoginBot"));
@@ -45,6 +46,7 @@ const MENU: { to: string; label: string; icon: string; perm?: string }[] = [
   { to: "/broadcasts", icon: "broadcasts", label: "Рассылки", perm: "broadcast.send" },
   { to: "/avito", icon: "avito", label: "Avito", perm: "avito.manage" },
   { to: "/robokassa", icon: "finance", label: "Robokassa", perm: "robokassa.manage" },
+  { to: "/recovery", icon: "support", label: "Импорт истории", perm: "recovery.import" },
   { to: "/staff", icon: "staff", label: "Сотрудники", perm: "staff.view" },
   { to: "/audit", icon: "audit", label: "Аудит", perm: "audit.view" },
 ];
@@ -197,6 +199,7 @@ function Layout({ me }: { me: Me }) {
           {has("covers.manage") && <Route path="/login-bot" element={<LoginBot />} />}
           {has("avito.manage") && <Route path="/avito" element={<Avito />} />}
           {has("robokassa.manage") && <Route path="/robokassa" element={<Robokassa />} />}
+          {has("recovery.import") && <Route path="/recovery" element={<Recovery />} />}
           {has("catalog.manage") && <Route path="/catalog" element={<Catalog />} />}
           {has("broadcast.send") && <Route path="/broadcasts" element={<Broadcasts />} />}
           {has("staff.view") && <Route path="/staff" element={<Staff />} />}

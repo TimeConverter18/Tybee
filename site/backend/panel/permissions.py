@@ -27,6 +27,7 @@ class Perm(str, Enum):
     ROBOKASSA_MANAGE = "robokassa.manage"
     CATALOG_MANAGE = "catalog.manage"
     BROADCAST_SEND = "broadcast.send"
+    RECOVERY_IMPORT = "recovery.import"
 
 
 R = StaffRole

@@ -28,6 +28,7 @@ from panel.routes import (
     logistics,
     login_settings,
     payroll,
+    recovery,
     robokassa,
     staff,
     support,
@@ -150,6 +151,7 @@ def create_app() -> FastAPI:
     app.include_router(robokassa.router)
     app.include_router(catalog.router)
     app.include_router(broadcasts.router)
+    app.include_router(recovery.router)
 
     @app.get("/api/health")
     async def health():
