@@ -62,6 +62,11 @@ jobs:
       - name: Build site image
         run: docker build -f site/Dockerfile -t tybee-site .
 
+      - name: Check application imports in built images
+        run: |
+          docker run --rm tybee-bot python -c "import app.bot"
+          docker run --rm tybee-site python -c "import panel.main"
+
   manual-run:
     name: Manual bot smoke run
     if: github.event_name == 'workflow_dispatch'

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import argparse
-import asyncio
 import html
 import mimetypes
 import re
@@ -305,21 +303,3 @@ async def import_history(
     stats.update({"imported": imported, "attachments": attachments})
     return stats
 
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Import a Telegram support HTML export into the current database.")
-    parser.add_argument("dump", type=Path)
-    parser.add_argument("export_dir", type=Path)
-    parser.add_argument("--user-id", type=int, help="Import only one client for a trial run")
-    parser.add_argument("--execute", action="store_true", help="Write to the database; without it only print the analysis")
-    args = parser.parse_args()
-    stats = asyncio.run(
-        import_history(args.export_dir, args.dump, execute=args.execute, user_id=args.user_id)
-    )
-    print(stats)
-    if not args.execute:
-        print("Dry run only. Add --execute after checking the report.")
-
-
-if __name__ == "__main__":
-    main()
