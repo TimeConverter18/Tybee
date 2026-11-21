@@ -683,12 +683,12 @@ function BotSimulator({ draft, spec, banners, sample, keyboard, onText, onButton
     const destinations: Record<string, string> = {
       BTN_NEW_ORDER: "ORDER_CHOICE", BTN_PROFILE: "PROFILE", BTN_SUPPORT: "SUPPORT",
       BTN_MY_ORDERS: "NO_ORDERS", BTN_ORDER_PERSONAL: "PERSONAL_PROMPT", BTN_PERSONAL_APPLICATION: "PERSONAL_PROMPT",
-      BTN_ORDER_ARTICLE: "ARTICLE_ALREADY", BTN_ORDER_MYSTERY: "MYSTERY_LIST", BTN_HAS_ARTICLE: "ARTICLE_PROMPT",
-      BTN_NO_ARTICLE: "PERSONAL_PROMPT", BTN_MYSTERY_ITEM: "MYSTERY_OFFER", BTN_TO_PAYMENT: "PAYMENT",
+      BTN_ORDER_ARTICLE: "ARTICLE_ALREADY", BTN_HAS_ARTICLE: "ARTICLE_PROMPT",
+      BTN_NO_ARTICLE: "PERSONAL_PROMPT", BTN_TO_PAYMENT: "PAYMENT",
       BTN_MENU: "WELCOME", BTN_HOME: "WELCOME", BTN_CLOSE_DIALOG: "WELCOME", BTN_OPEN_DIALOG: "DIALOG_OPEN",
       BTN_BACK: ["NO_ORDERS", "ORDERS_HEADER", "OFFER"].includes(screen) ? "PROFILE" :
         ["ARTICLE_PROMPT", "ARTICLE_INVALID"].includes(screen) ? "ARTICLE_ALREADY" :
-        ["ARTICLE_ALREADY", "PERSONAL_PROMPT", "MYSTERY_LIST", "MYSTERY_EMPTY"].includes(screen) ? "ORDER_CHOICE" : "WELCOME",
+        ["ARTICLE_ALREADY", "PERSONAL_PROMPT"].includes(screen) ? "ORDER_CHOICE" : "WELCOME",
     };
     if (key === "BTN_OFFER" || key === "BTN_PAY_ONLINE" || key === "BTN_PAY_FINE") {
       setNotice(key === "BTN_OFFER" ? "В настоящем боте откроется ссылка на оферту." : "В настоящем боте откроется страница оплаты.");

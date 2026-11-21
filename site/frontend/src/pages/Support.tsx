@@ -461,13 +461,14 @@ function List({ me, current }: { me: Me; current?: number }) {
     }, 200);
   };
   const [scope, setScope] = useState<"mine" | "queue" | "all" | "stale" | "waiting">("waiting");
+  const [payment, setPayment] = useState<"all" | "invoiced" | "paid">("all");
   const [q, setQ] = useState("");
   const [startOpen, setStartOpen] = useState(false);
   const qc = useQueryClient();
   const list = useInfiniteQuery({
-    queryKey: ["support-threads", scope, q],
+    queryKey: ["support-threads", scope, payment, q],
     initialPageParam: "",
-    queryFn: ({ pageParam }) => api<ThreadPage>(`/api/support/threads?paginated=true&scope=${scope}&q=${encodeURIComponent(q)}&cursor=${encodeURIComponent(pageParam)}`),
+    queryFn: ({ pageParam }) => api<ThreadPage>(`/api/support/threads?paginated=true&scope=${scope}&payment=${payment}&q=${encodeURIComponent(q)}&cursor=${encodeURIComponent(pageParam)}`),
     getNextPageParam: (page) => page.next_cursor || undefined,
     refetchInterval: live ? 60_000 : 15_000,
     enabled: scope !== "stale",
@@ -487,6 +488,11 @@ function List({ me, current }: { me: Me; current?: number }) {
   return (
     <div className="sup-list" onScroll={hidePeek}>
       {tabs}
+      <div className="sup-pay-filters" role="group" aria-label="Фильтр по счетам">
+        <button type="button" className={payment === "all" ? "sup-pay-chip active" : "sup-pay-chip"} onClick={() => setPayment("all")}>Все счета</button>
+        <button type="button" className={payment === "invoiced" ? "sup-pay-chip active" : "sup-pay-chip"} onClick={() => setPayment(payment === "invoiced" ? "all" : "invoiced")}>🧾 Выставлен счёт</button>
+        <button type="button" className={payment === "paid" ? "sup-pay-chip active" : "sup-pay-chip"} onClick={() => setPayment(payment === "paid" ? "all" : "paid")}>💳 Оплачен счёт</button>
+      </div>
       <Input type="search" placeholder="Поиск клиента" value={q} onChange={(e) => setQ(e.target.value)} />
       {list.error && <p className="error">{list.error.message}</p>}
       {list.isLoading && <SupportListSkeleton rows={6} />}
@@ -500,6 +506,8 @@ function List({ me, current }: { me: Me; current?: number }) {
           <div className="sup-row-content">
           <div className="sup-row-head">
             <b>{t.client.name}</b>
+            {t.has_paid_order && <span className="badge ok" title="Есть оплаченный счёт">💳</span>}
+            {t.has_invoiced_order && <span className="badge wait" title="Есть выставленный счёт">🧾</span>}
             {t.unread > 0 && <span className="badge bad">{t.unread}</span>}
           </div>
           <small className="muted">
@@ -1042,7 +1050,7 @@ function Chat({ me, id }: { me: Me; id: number }) {
         )}
       </Card>
       <Dialog open={clientOpen} onOpenChange={setClientOpen}>
-      <DialogContent className="app-dialog sup-client-drawer" aria-describedby={undefined} onOpenAutoFocus={(e) => { e.preventDefault(); clientTitle.current?.focus(); }}>
+      <DialogContent variant="drawer" className="app-dialog sup-client-drawer" aria-describedby={undefined} onOpenAutoFocus={(e) => { e.preventDefault(); clientTitle.current?.focus(); }}>
         <div className="sup-client-heading" ref={clientTitle} tabIndex={-1}>
           <DialogTitle>Клиент и заказы</DialogTitle>
           <p className="muted">{d.client.name}</p>
@@ -1115,7 +1123,7 @@ function TransferModal({ onClose, onPick, err, pending }: { onClose: () => void;
     <form className="form" onSubmit={(e) => { e.preventDefault(); onPick({ staff_id: Number(staffId), summary, next_step: step, due_at: due ? new Date(due).toISOString() : null }); }}>
       <DialogTitle>Передать диалог с контекстом</DialogTitle>
       {agents.error && <p className="error">{agents.error.message}</p>}
-      <label>Получатель<CustomSelect value={staffId} onChange={(e) => setStaffId(e.target.value)} required><option value="">Выберите сотрудника</option>{agents.data?.map((a) => <option key={a.telegram_id} value={a.telegram_id} disabled={!a.on_shift}>{a.display_name} · {a.on_shift ? `на смене · ${a.open} диалогов` : "вне смены"}</option>)}</CustomSelect></label>
+      <label>Получатель<CustomSelect value={staffId} onChange={(e) => setStaffId(e.target.value)} required><option value="">Выберите сотрудника</option>{agents.data?.map((a) => <option key={a.telegram_id} value={a.telegram_id}>{a.display_name} · {a.on_shift ? `на смене · ${a.open} диалогов` : `вне смены · ${a.open} диалогов`}</option>)}</CustomSelect></label>
       <label>Что случилось и что уже проверено<Textarea required maxLength={2000} value={summary} onChange={(e) => setSummary(e.target.value)} /></label>
       <label>Что нужно сделать / что обещано<Input required maxLength={1000} value={step} onChange={(e) => setStep(e.target.value)} /></label>
       <label>Срок (необязательно)<Input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} /></label>

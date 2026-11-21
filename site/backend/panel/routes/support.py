@@ -32,10 +32,10 @@ from app.db.models import (
     User,
     UserCover,
 )
-from app.support import actions, assign, shift
+from app.support import actions, assign, notify, shift
 from app.support import attachments as files
 from app.services.notify import resolve_dialog_cover
-from app.support.common import FINAL_STATUSES, NO_PING_STATUSES, ORDER_STATUS_LABELS, ORDER_STATUSES, SETTABLE, SupportError, now, ts
+from app.support.common import FINAL_STATUSES, NO_PING_STATUSES, ORDER_STATUS_LABELS, ORDER_STATUSES, PAID, SETTABLE, SupportError, now, ts
 from panel import idempotency
 from panel.audit import write_audit
 from panel.auth import csrf_guard, current_staff, require_perm
@@ -73,12 +73,8 @@ def _wrap(exc: SupportError) -> HTTPException:
 
 
 def _require_shift(me: Staff) -> None:
-    """Starting or continuing work needs an active shift.
-
-    The panel turns ``shift_required`` into the "Начать смену?" dialog and repeats
-    the same request with the same ``Idempotency-Key``."""
-    if not me.on_shift:
-        raise HTTPException(409, "Сначала начните смену", headers={"X-Tybee-Reason": "shift_required"})
+    """Shifts are informational only; staff can work with dialogs regardless of shift status."""
+    return
 
 
 async def _avito_titles(session: AsyncSession, chat_refs: set[int]) -> dict[int, str]:
@@ -153,9 +149,27 @@ async def _thread_rows(
         return []
     avito = await _avito_titles(session, {t.last_avito_chat_ref for t in threads if t.last_avito_chat_ref})
     users = {u.id: u for u in await session.scalars(select(User).where(User.id.in_({t.user_id for t in threads})))}
+    thread_user_ids = {t.user_id for t in threads}
     client_orders = await _client_orders(
-        session, {t.user_id for t in threads},
+        session, thread_user_ids,
         operations=bool(me and Perm.ORDERS_OPERATIONS_VIEW in perms_of(me)),
+    )
+    paid_user_ids = set(
+        await session.scalars(
+            select(Order.user_id).where(
+                Order.user_id.in_(thread_user_ids),
+                or_(Order.paid_at.is_not(None), Order.status.in_(PAID)),
+            ).distinct()
+        )
+    )
+    invoiced_user_ids = set(
+        await session.scalars(
+            select(Order.user_id).where(
+                Order.user_id.in_(thread_user_ids),
+                Order.status.in_(("awaiting_payment", "payment_review")),
+                Order.paid_at.is_(None),
+            ).distinct()
+        )
     )
     staff_ids = {t.assigned_to for t in threads if t.assigned_to is not None}
     names = {}
@@ -211,6 +225,8 @@ async def _thread_rows(
             "cover": slugs.get(t.last_cover_id), "unread": t.unread or 0,
             "last_message": last[t.id], "last_message_at": _iso(t.last_message_at),
             "client_orders": client_orders.get(t.user_id) or {"total": 0, "last": None},
+            "has_paid_order": t.user_id in paid_user_ids,
+            "has_invoiced_order": t.user_id in invoiced_user_ids,
         })
     return out
 
@@ -300,11 +316,11 @@ async def search_clients(
         if order_user is None:
             return {"items": [], "total": 0}
         stmt = select(*columns).where(
-            User.id == order_user, User.source == "telegram", last_seen.is_not(None)
+            User.id == order_user, User.source == "telegram"
         )
     elif term.isdigit() and len(term) >= 5:
         stmt = select(*columns).where(
-            User.id == int(term), User.source == "telegram", last_seen.is_not(None)
+            User.id == int(term), User.source == "telegram"
         )
     else:
         if len(term) < 2:
@@ -338,17 +354,24 @@ async def search_clients(
         # "last seen" subquery evaluated once per client.
         stmt = (
             select(matched)
-            .where(matched.c.last_seen_at.is_not(None))
-            .order_by(matched.c.rank, matched.c.last_seen_at.desc(), matched.c.id.desc())
+            .order_by(matched.c.rank, matched.c.last_seen_at.desc().nulls_last(), matched.c.id.desc())
         )
     rows = (await session.execute(stmt.limit(CLIENT_SEARCH_LIMIT))).all()
     items = await _client_hits(session, list(rows))
     return {"items": items, "total": len(items)}
 
 
+def _waiting_conditions(me: Staff) -> list[Any]:
+    conds: list[Any] = [SupportThread.needs_reply.is_(True), SupportThread.status == "open"]
+    if Perm.SUPPORT_VIEW_ALL not in perms_of(me):
+        conds.append(or_(SupportThread.assigned_to == me.telegram_id, SupportThread.assigned_to.is_(None)))
+    return conds
+
+
 @router.get("/support/threads")
 async def list_threads(
     scope: str = Query("mine", pattern="^(mine|queue|all|waiting)$"),
+    payment: str = Query("all", pattern="^(all|invoiced|paid)$"),
     status: str | None = Query(None, pattern="^(open|closed)$"),
     q: str | None = None,
     after: datetime | None = None,
@@ -363,12 +386,20 @@ async def list_threads(
     ordering = SupportThread.waiting_since if scope == "waiting" else SupportThread.last_message_at
     stamp = func.coalesce(ordering, SupportThread.created_at)
     stmt = select(SupportThread)
-    if scope in ("mine", "waiting"):
+    if scope == "mine":
         stmt = stmt.where(SupportThread.assigned_to == me.telegram_id)
+    elif scope == "waiting":
+        stmt = stmt.where(*_waiting_conditions(me))
     elif scope == "queue":
         stmt = stmt.where(SupportThread.assigned_to.is_(None), SupportThread.status == "open")
-    if scope == "waiting":
-        stmt = stmt.where(SupportThread.needs_reply.is_(True), SupportThread.status == "open")
+    if payment == "paid":
+        paid_sub = select(Order.user_id).where(or_(Order.paid_at.is_not(None), Order.status.in_(PAID)))
+        stmt = stmt.where(SupportThread.user_id.in_(paid_sub))
+    elif payment == "invoiced":
+        inv_sub = select(Order.user_id).where(
+            Order.status.in_(("awaiting_payment", "payment_review")), Order.paid_at.is_(None)
+        )
+        stmt = stmt.where(SupportThread.user_id.in_(inv_sub))
     if status:
         stmt = stmt.where(SupportThread.status == status)
     if after:
@@ -411,8 +442,9 @@ async def summary(me: Staff = Depends(require_perm(Perm.SUPPORT_CHAT)), session:
     queue = await session.scalar(
         select(func.count()).select_from(SupportThread).where(SupportThread.assigned_to.is_(None), SupportThread.status == "open")
     )
-    waiting = await session.scalar(select(func.count()).select_from(SupportThread).where(
-        SupportThread.assigned_to == me.telegram_id, SupportThread.status == "open", SupportThread.needs_reply.is_(True)))
+    waiting = await session.scalar(
+        select(func.count()).select_from(SupportThread).where(*_waiting_conditions(me))
+    )
     return {"waiting": int(waiting or 0), "unread": int(unread or 0), "queue": int(queue or 0), "on_shift": me.on_shift,
             "shift": await _shift_state(session, me)}
 
@@ -970,8 +1002,7 @@ async def transfer(thread_id: int, body: TransferBody, me: Staff = Depends(requi
         raise HTTPException(422, "Сотрудник не может вести поддержку")
     if not body.summary.strip() or not body.next_step.strip():
         raise HTTPException(422, "Заполните контекст передачи и следующий шаг")
-    if not target.on_shift:
-        raise HTTPException(409, "Получатель вне смены. Выберите доступного сотрудника")
+
     if body.due_at and body.due_at.tzinfo is None:
         raise HTTPException(422, "Укажите часовой пояс срока")
     thread.handoff_note = body.summary.strip() or None
@@ -985,6 +1016,13 @@ async def transfer(thread_id: int, body: TransferBody, me: Staff = Depends(requi
         raise _wrap(exc) from None
     await write_audit(session, me, "support.transfer", str(thread_id), {"to": target.telegram_id, "summary": thread.handoff_note, "next_step": thread.next_step, "due_at": _iso(thread.due_at)})
     await session.commit()
+    await notify.send_staff_messages([
+        (
+            target.telegram_id,
+            f"❗️❗️ <b>Вам передан диалог #{thread.id}</b> от {me.display_name}\n"
+            f"Контекст: {thread.handoff_note}\nСледующий шаг: {thread.next_step}",
+        )
+    ])
     return {"ok": True}
 
 
@@ -1100,21 +1138,23 @@ async def stale_orders(
     cutoff = now() - timedelta(days=days)
     stmt = (
         select(Order, SupportThread, User)
-        .join(SupportThread, SupportThread.user_id == Order.user_id)
+        .outerjoin(SupportThread, SupportThread.user_id == Order.user_id)
         .join(User, User.id == Order.user_id)
         .where(Order.updated_at < cutoff, Order.status.not_in(FINAL_STATUSES))
         .order_by(Order.updated_at)
         .limit(300)
     )
     if Perm.SUPPORT_VIEW_ALL not in perms_of(me):
-        stmt = stmt.where(SupportThread.assigned_to == me.telegram_id)
+        stmt = stmt.where(or_(SupportThread.assigned_to == me.telegram_id, SupportThread.assigned_to.is_(None)))
     rows = (await session.execute(stmt)).all()
     return [
         {
             "order_id": o.id, "title": o.title, "price": o.price, "status": o.status,
             "status_label": ORDER_STATUS_LABELS.get(o.status, o.status),
             "updated_at": _iso(o.updated_at), "last_ping_at": _iso(o.last_ping_at),
-            "thread_id": t.id, "client": (u.full_name or str(u.id)), "can_ping": t.assigned_to == me.telegram_id,
+            "thread_id": t.id if t is not None else None,
+            "client": (u.full_name or str(u.id)),
+            "can_ping": bool(t is not None and _responsible(t, me)),
         }
         for o, t, u in rows
     ]

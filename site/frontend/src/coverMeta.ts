@@ -20,9 +20,6 @@ export const TEXT_META: Record<string, TextMeta> = {
   FOUND: { label: "Товар найден", hint: "Артикул есть в каталоге", banner: "approved", kb: "pay_offer" },
   REJECTED_CATALOG: { label: "Товара нет в каталоге", banner: "rejected", kb: "catalog_rejected" },
   ORDER_CREATED: { label: "Выставлен счёт", hint: "Когда сотрудник выставил счёт из чата", kb: "payment" },
-  MYSTERY_LIST: { label: "Список Mystery Box", banner: "mystery", kb: "mystery" },
-  MYSTERY_EMPTY: { label: "Mystery Box — нет в наличии", banner: "mystery" },
-  MYSTERY_OFFER: { label: "Mystery Box выбран", banner: "approved", kb: "pay_offer" },
   PERSONAL_PROMPT: { label: "Персональная заявка", hint: "Просьба описать товар", banner: "order_choice", kb: "back" },
   PERSONAL_DONE: { label: "Персональная заявка принята", banner: "approved", kb: "in_dialog" },
   PAYMENT: { label: "Оплата заказа", banner: "payment", kb: "payment" },
@@ -50,7 +47,6 @@ export const TEXT_META: Record<string, TextMeta> = {
 export const TEXT_GROUPS: [string, string[]][] = [
   ["Главное меню и профиль", ["WELCOME", "PROFILE", "OFFER", "OFFER_URL", "NO_ORDERS", "ORDERS_HEADER", "PROFILE_DEFAULT_NAME", "CMD_START_DESCRIPTION"]],
   ["Заказ по артикулу", ["ORDER_CHOICE", "ARTICLE_ALREADY", "ARTICLE_PROMPT", "ARTICLE_INVALID", "FOUND", "REJECTED_CATALOG"]],
-  ["Mystery Box", ["MYSTERY_LIST", "MYSTERY_EMPTY", "MYSTERY_OFFER"]],
   ["Персональная заявка", ["PERSONAL_PROMPT", "PERSONAL_DONE"]],
   ["Оплата", ["ORDER_CREATED", "PAYMENT", "PAYMENT_UNAVAILABLE", "APPROVED", "REJECTED_PAYMENT"]],
   ["Поддержка", ["SUPPORT", "DIALOG_OPEN"]],
@@ -71,7 +67,6 @@ export const BUTTON_LABELS: Record<string, string> = {
   BTN_OFFER: "Оферта",
   BTN_MY_ORDERS: "Мои заказы",
   BTN_ORDER_ARTICLE: "Заказ по артикулу",
-  BTN_ORDER_MYSTERY: "Mystery Box",
   BTN_ORDER_PERSONAL: "Персональная заявка",
   BTN_PERSONAL_APPLICATION: "Оформить персональную заявку",
   BTN_HAS_ARTICLE: "Артикул есть",
@@ -79,7 +74,6 @@ export const BUTTON_LABELS: Record<string, string> = {
   BTN_PAY_ONLINE: "Оплатить онлайн",
   BTN_PAY_FINE: "Оплатить штраф",
   BTN_TO_PAYMENT: "Перейти к оплате",
-  BTN_MYSTERY_ITEM: "Кнопка бокса в списке",
 };
 
 export const STATUS_LABELS: Record<string, string> = {
@@ -106,7 +100,6 @@ export const BANNER_LABELS: Record<string, string> = {
   profile: "Профиль и поддержка",
   order_choice: "Выбор способа заказа",
   article: "Артикул",
-  mystery: "Mystery Box",
   payment: "Оплата",
   almost: "Почти готово",
   approved: "Заявка одобрена",
@@ -119,9 +112,8 @@ export const KEYBOARDS: Record<string, string[][]> = {
   profile_menu: [["BTN_MY_ORDERS"], ["BTN_OFFER"], ["BTN_MENU"]],
   back: [["BTN_BACK"]],
   menu: [["BTN_MENU"]],
-  order_choice: [["BTN_ORDER_PERSONAL"], ["BTN_ORDER_ARTICLE", "BTN_ORDER_MYSTERY"], ["BTN_BACK"]],
+  order_choice: [["BTN_ORDER_PERSONAL"], ["BTN_ORDER_ARTICLE"], ["BTN_BACK"]],
   article_choice: [["BTN_HAS_ARTICLE", "BTN_NO_ARTICLE"], ["BTN_BACK"]],
-  mystery: [["BTN_MYSTERY_ITEM"], ["BTN_BACK"]],
   payment: [["BTN_PAY_ONLINE"], ["BTN_MENU"]],
   catalog_rejected: [["BTN_PERSONAL_APPLICATION"], ["BTN_MENU"]],
   open_dialog: [["BTN_OPEN_DIALOG"], ["BTN_HOME"]],
