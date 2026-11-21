@@ -1,16 +1,7 @@
 """Support shifts: start/end, presence heartbeat and the automatic end.
 
-A shift is not just a checkbox: while it is on, the panel tab pings the server
-(``last_seen_at``) and reports real input (``last_active_at``). The sweep ends the
-shift when the employee is gone, so nobody "sits on shift" with the tab closed or
-the computer left alone, and their waiting clients go back to the queue:
-
-* ``offline``  — no open panel tab for OFFLINE_AFTER;
-* ``idle``     — tab open but no mouse/keyboard for IDLE_AFTER;
-* ``no_reply`` — a client has been waiting NO_REPLY_AFTER in a thread the
-  employee has not even opened (catches mouse jigglers too).
-
-Every shift is a ``staff_shifts`` row, so leads see real hours, not a flag.
+Shifts track presence and hours, but ending a shift never releases assigned
+support threads (dialogs in Tybee live for days or months).
 """
 from __future__ import annotations
 
@@ -85,7 +76,7 @@ async def start_shift(session: AsyncSession, staff: Staff) -> bool:
 
 
 async def end_shift(session: AsyncSession, staff: Staff, reason: str) -> bool:
-    """False when the employee was not on shift."""
+    """False when the employee was not on shift. Assigned threads stay with the employee."""
     staff = await session.scalar(select(Staff).where(Staff.telegram_id == staff.telegram_id).with_for_update().execution_options(populate_existing=True))
     if staff is None:
         return False
@@ -96,14 +87,14 @@ async def end_shift(session: AsyncSession, staff: Staff, reason: str) -> bool:
     for row in rows:
         row.ended_at = now()
         row.end_reason = reason
-    if reason not in AUTO_REASONS:
+    if reason == DEACTIVATED:
         await release_waiting(session, staff.telegram_id)
     await session.flush()
     return True
 
 
 async def release_waiting(session: AsyncSession, staff_id: int) -> int:
-    """Return unanswered threads and unfinished next steps to the queue (the rest stay with the employee)."""
+    """Return unanswered threads and unfinished next steps to the queue (used on deactivation)."""
     result = await session.execute(
         update(SupportThread)
         .where(SupportThread.assigned_to == staff_id, SupportThread.status == "open", or_(SupportThread.needs_reply.is_(True), SupportThread.next_step.is_not(None)))
@@ -120,7 +111,7 @@ class AutoEnd:
 
 
 async def sweep(session: AsyncSession, at: datetime | None = None) -> list[AutoEnd]:
-    """End shifts of employees who are not really there. The caller commits."""
+    """End shifts of employees who are not really there without unassigning their threads."""
     at = at or now()
     on_shift = Staff.on_shift.is_(True)
     found: dict[int, tuple[Staff, str]] = {}
@@ -137,29 +128,8 @@ async def sweep(session: AsyncSession, at: datetime | None = None) -> list[AutoE
     for s in idle:
         found.setdefault(s.telegram_id, (s, IDLE))
 
-    cutoff = at - NO_REPLY_AFTER
-    # A client waits in a thread the employee has not opened since: the message, the
-    # assignment and the shift itself are all older than the cutoff.
-    waiting = await session.scalars(
-        select(Staff)
-        .join(SupportThread, SupportThread.assigned_to == Staff.telegram_id)
-        .join(StaffShift, (StaffShift.staff_id == Staff.telegram_id) & StaffShift.ended_at.is_(None))
-        .where(
-            on_shift,
-            SupportThread.status == "open",
-            SupportThread.needs_reply.is_(True),
-            SupportThread.next_step.is_(None),
-            SupportThread.last_client_message_at < cutoff,
-            or_(SupportThread.assigned_at.is_(None), SupportThread.assigned_at < cutoff),
-            StaffShift.started_at < cutoff,
-        )
-        .distinct()
-    )
-    for s in waiting:
-        found.setdefault(s.telegram_id, (s, NO_REPLY))
-
     ended: list[AutoEnd] = []
     for staff, reason in found.values():
         await end_shift(session, staff, reason)
-        ended.append(AutoEnd(staff, reason, await release_waiting(session, staff.telegram_id)))
+        ended.append(AutoEnd(staff, reason, 0))
     return ended

@@ -292,7 +292,6 @@ function StatsTab() {
       <div className="cards">
         <Card className="card stat"><small>Клиентов</small><b>{s.users}</b><small>забанено: {s.banned}</small></Card>
         <Card className="card stat"><small>Товаров</small><b>{s.products}</b></Card>
-        <Card className="card stat"><small>Боксов</small><b>{s.boxes}</b></Card>
         <Card className="card stat"><small>Заказов</small><b>{s.orders}</b></Card>
       </div>
       <h2>Заказы по статусам</h2>
@@ -307,13 +306,12 @@ function StatsTab() {
 }
 
 export default function Catalog() {
-  const [tab, setTab] = useState<"products" | "boxes" | "stats">("products");
+  const [tab, setTab] = useState<"products" | "stats">("products");
   return (
     <>
       <h1>Каталог</h1>
-      <Tabs value={tab} onValueChange={(value) => setTab(value as typeof tab)}><TabsList className="app-tabs"><TabsTrigger value="products">Товары</TabsTrigger><TabsTrigger value="boxes">Мистери-боксы</TabsTrigger><TabsTrigger value="stats">Статистика</TabsTrigger></TabsList></Tabs>
+      <Tabs value={tab} onValueChange={(value) => setTab(value as typeof tab)}><TabsList className="app-tabs"><TabsTrigger value="products">Товары</TabsTrigger><TabsTrigger value="stats">Статистика</TabsTrigger></TabsList></Tabs>
       {tab === "products" && <Products />}
-      {tab === "boxes" && <Boxes />}
       {tab === "stats" && <StatsTab />}
     </>
   );

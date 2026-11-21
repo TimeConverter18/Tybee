@@ -14,11 +14,13 @@ from app.support.ingest import Notification
 
 logger = logging.getLogger(__name__)
 ANTISPAM_SEC = 60
-_last_sent: dict[tuple[int, int], float] = {}
+_last_sent: dict[tuple[int, int, str], float] = {}
 
 
-def _due(thread_id: int, staff_id: int, at: float) -> bool:
-    key = (thread_id, staff_id)
+def _due(thread_id: int, staff_id: int, kind: str, at: float) -> bool:
+    if kind == "new_client":
+        return True
+    key = (thread_id, staff_id, kind)
     if at - _last_sent.get(key, 0.0) < ANTISPAM_SEC:
         return False
     _last_sent[key] = at
@@ -31,7 +33,24 @@ def _due(thread_id: int, staff_id: int, at: float) -> bool:
 def render(n: Notification, cover_slug: str | None) -> str:
     snippet = n.text if len(n.text) <= 200 else n.text[:197] + "…"
     cover = f" · {html.escape(cover_slug)}" if cover_slug else ""
-    return f"💬 <b>Ветка #{n.thread_id}</b> · {html.escape(n.client_name)}{cover}\n{html.escape(snippet)}"
+    client = html.escape(n.client_name)
+    if n.kind == "new_client":
+        return (
+            f"👋 <b>Новый потенциальный клиент в боте</b>\n"
+            f"👤 <b>{client}</b>{cover}\n"
+            f"💬 Ветка #{n.thread_id}"
+        )
+    if not n.assigned:
+        return (
+            f"❗️❗️❗️ <b>Срочно, новая заявка, бегите принимать!</b>\n"
+            f"💬 <b>Ветка #{n.thread_id}</b> · {client}{cover}\n"
+            f"{html.escape(snippet)}"
+        )
+    return (
+        f"❗️❗️ <b>У вас новое сообщение, перейдите в диалог</b>\n"
+        f"💬 <b>Ветка #{n.thread_id}</b> · {client}{cover}\n"
+        f"{html.escape(snippet)}"
+    )
 
 
 async def send_notifications(notifications: list[Notification], cover_slugs: dict[int, str] | None = None) -> None:
@@ -46,11 +65,12 @@ async def send_notifications(notifications: list[Notification], cover_slugs: dic
             markup = None
             if base:
                 markup = InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="Открыть", url=f"{base}/support/{n.thread_id}")]]
+                    inline_keyboard=[[InlineKeyboardButton(text="Открыть диалог", url=f"{base}/support/{n.thread_id}")]]
                 )
             text = render(n, (cover_slugs or {}).get(n.cover_id) if n.cover_id else None)
+            throttle_kind = "new_client" if n.kind == "new_client" else ("assigned" if n.assigned else "unassigned")
             for staff_id in n.recipients:
-                if not _due(n.thread_id, staff_id, time.monotonic()):
+                if not _due(n.thread_id, staff_id, throttle_kind, time.monotonic()):
                     continue
                 try:
                     await bot.send_message(staff_id, text, parse_mode="HTML", reply_markup=markup)
@@ -61,7 +81,7 @@ async def send_notifications(notifications: list[Notification], cover_slugs: dic
 
 
 async def send_staff_messages(messages: list[tuple[int, str]]) -> None:
-    """Plain service messages to employees (e.g. "your shift was ended")."""
+    """Plain service messages to employees (e.g. transfer or shift notice)."""
     token = login_bot_token()
     if not messages or not token:
         return

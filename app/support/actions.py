@@ -65,13 +65,11 @@ async def reply(
         )
         session.add(attachment)
         await session.flush()
-    name = f"<b>{html.escape(staff.display_name)}:</b>"
-    if thread.channel == "telegram":
-        name = f"💬 <b>Поддержка</b>\n{name}"
+    header = "💬 <b>Поддержка</b>" if thread.channel == "telegram" else "💬 Поддержка"
     outbox = SupportOutbox(
         user_id=thread.user_id,
         kind="text",
-        body=f"{name}\n{html.escape(text)}" if text else name,
+        body=f"{header}\n{html.escape(text)}" if text else header,
         cover_id=thread.last_cover_id,
         avito_chat_ref=thread.last_avito_chat_ref,
         attachment_id=attachment.id if attachment is not None else None,
@@ -89,8 +87,12 @@ async def reply(
         attachment.thread_message_id = msg.id
     thread.status = "open"
     thread.last_message_at = now()
+    thread.needs_reply = False
+    thread.waiting_since = None
     await _ensure_open_conversation(session, thread)
     await session.flush()
+    from app.finance import payroll
+    await payroll.credit_message(session, staff.telegram_id, msg.id, thread.id)
     return msg
 
 
@@ -295,7 +297,7 @@ async def close_thread(session: AsyncSession, thread: SupportThread, staff: Staf
         )
     ):
         conv.status = "closed"
-    session.add(SupportOutbox(user_id=thread.user_id, kind="text", body="Диалог с поддержкой завершён.",
+    session.add(SupportOutbox(user_id=thread.user_id, kind="text", body="✨ Диалог с поддержкой завершён.\n\nЕсли появятся новые вопросы — просто напишите нам, мы всегда на связи! 💬",
                               cover_id=thread.last_cover_id, avito_chat_ref=thread.last_avito_chat_ref))
     session.add(_note(thread, staff, "close", f"Диалог закрыт: {staff.display_name}"))
     await session.flush()

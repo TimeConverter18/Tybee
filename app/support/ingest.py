@@ -16,11 +16,10 @@ from app.db.models import (
     SupportThreadMessage,
     User,
 )
-from app.support import assign
-from app.support.common import ASSIGNABLE_ROLES, now
+from app.support.common import NOTIFY_ROLES, now
 
 logger = logging.getLogger(__name__)
-SYSTEM_KINDS = {"delivery_failed", "close"}
+SYSTEM_KINDS = {"delivery_failed", "close", "new_client"}
 
 
 @dataclass
@@ -31,7 +30,18 @@ class Notification:
     cover_id: int | None
     text: str
     kind: str = "message"
+    assigned: bool = False
     extra: dict = field(default_factory=dict)
+
+
+async def _all_active_support_ids(session: AsyncSession) -> list[int]:
+    return list(
+        await session.scalars(
+            select(Staff.telegram_id).where(
+                Staff.role.in_(NOTIFY_ROLES), Staff.is_active.is_(True)
+            )
+        )
+    )
 
 
 async def process_inbox_batch(session: AsyncSession, limit: int = 50) -> list[Notification]:
@@ -66,7 +76,6 @@ async def _process_event(session: AsyncSession, event: SupportInbox) -> Notifica
         return None
 
     thread = await session.scalar(select(SupportThread).where(SupportThread.user_id == user.id).with_for_update())
-    created = thread is None
     if thread is None:
         thread = SupportThread(
             user_id=user.id, channel=conversation.channel, status="open", unread=0,
@@ -109,6 +118,8 @@ async def _process_event(session: AsyncSession, event: SupportInbox) -> Notifica
         thread.waiting_since = None
         thread.next_step = None
         thread.due_at = None
+    elif event.kind == "new_client":
+        thread.status = "open"
     else:
         thread.status = "open"
         if not is_system:
@@ -118,28 +129,34 @@ async def _process_event(session: AsyncSession, event: SupportInbox) -> Notifica
             thread.last_client_message_at = event.created_at or now()
             thread.unread = (thread.unread or 0) + 1
 
+    # Keep thread ownership even when the assigned staff member is off-shift;
+    # only release if the employee was deactivated/deleted.
     if not is_system and thread.assigned_to is not None:
         owner = await session.get(Staff, thread.assigned_to)
-        if owner is None or not owner.is_active or not owner.on_shift:
+        if owner is None or not owner.is_active:
             thread.assigned_to = None
             thread.assigned_at = None
-    if created or (not is_system and thread.assigned_to is None):
-        await assign.auto_assign(session, thread)
     await session.flush()
 
     if event.kind == "close":
         return None
-    recipients: list[int]
-    if thread.assigned_to is not None:
+    if event.kind == "new_client":
+        recipients = await _all_active_support_ids(session)
+        return Notification(
+            thread_id=thread.id,
+            recipients=recipients,
+            client_name=user.full_name or str(user.id),
+            cover_id=event.cover_id,
+            text=event.body,
+            kind="new_client",
+            assigned=False,
+        )
+
+    assigned = thread.assigned_to is not None
+    if assigned:
         recipients = [thread.assigned_to]
     else:
-        recipients = list(
-            await session.scalars(
-                select(Staff.telegram_id).where(
-                    Staff.role.in_(ASSIGNABLE_ROLES), Staff.is_active.is_(True), Staff.on_shift.is_(True)
-                )
-            )
-        )
+        recipients = await _all_active_support_ids(session)
     return Notification(
         thread_id=thread.id,
         recipients=recipients,
@@ -147,4 +164,5 @@ async def _process_event(session: AsyncSession, event: SupportInbox) -> Notifica
         cover_id=event.cover_id,
         text=f"{event.body} 📎" if attached else event.body,
         kind=event.kind,
+        assigned=assigned,
     )

@@ -42,8 +42,6 @@ texts:
 
     🏷 <b>По артикулу</b> — быстро оформим заказ на товар, который есть в нашем каталоге на сайте.
 
-    🎁 <b>Mystery Box</b> — это набор из лимитированных вещей, подобранный командой на основе ваших предпочтений.
-
     📝 <b>Персональная заявка</b> — мы закажем любой товар, даже если его нет в нашем каталоге.
   MYSTERY_LIST: |-
     🎁 <b>Mystery Box</b>
@@ -99,7 +97,7 @@ texts:
     К оплате: <b>{price} ₽</b>
 
     Нажмите кнопку ниже, чтобы оплатить через Robokassa. Подтверждение придёт автоматически.
-  PAYMENT_UNAVAILABLE: "Оплата через Robokassa временно недоступна. Попробуйте позже."
+  PAYMENT_UNAVAILABLE: "⏳ Оплата через Robokassa временно недоступна. Попробуйте чуть позже или напишите в поддержку 💬"
   APPROVED: |-
     <b>Вашу заявку одобрили</b> ✅
 
@@ -157,7 +155,7 @@ texts:
   ORDER_LINE: |-
     📦 <b>#{order_id}</b> {title}{price_part}
         └ статус: {status}
-  ANSWER_DIALOG_CLOSED: "Диалог завершён"
+  ANSWER_DIALOG_CLOSED: "✨ Диалог завершён"
   ANSWER_ORDER_NOT_FOUND: "Заказ не найден"
   ANSWER_BOX_UNAVAILABLE: "Бокс недоступен"
   ANSWER_BAN_LIFTED: "Блокировка уже снята."
@@ -165,7 +163,7 @@ texts:
   UNBAN_PAYMENT_MESSAGE: "Для снятия блокировки оплатите штраф <b>{amount} ₽</b> через Robokassa. После подтверждения платежа доступ будет восстановлен автоматически."
   UNBAN_PAYMENT_DESCRIPTION: "Разблокировка аккаунта {brand} #{user_id}"
   ORDER_STATUS_PUSH: "\U0001F4E6 Заказ #{order_id}: новый статус — <b>{title}</b>"
-  ORDER_PING: "🔔 Напоминаем о заказе #{order_id} «{title}». Текущий статус: {status}."
+  ORDER_PING: "🔔 Привет! Напоминаем о вашем заказе #{order_id} «{title}» ✨\nТекущий статус: {status}."
   CMD_START_DESCRIPTION: "Открыть меню {brand}"
 buttons:
   BTN_NEW_ORDER: "\U0001F6D2 Оформить заказ"

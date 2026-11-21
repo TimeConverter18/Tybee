@@ -46,9 +46,7 @@ async def sweep_shifts() -> list[shift.AutoEnd]:
         await send_staff_messages([
             (
                 e.staff.telegram_id,
-                f"⏹ Смена завершена автоматически: {shift.REASON_LABELS[e.reason]}."
-                + (f"\nОжидающие ответа диалоги ({e.released}) возвращены в очередь." if e.released else "")
-                + "\nЧтобы продолжить, начните смену в панели заново.",
+                f"⏹ Смена завершена автоматически: {shift.REASON_LABELS[e.reason]}.\nЗакреплённые за вами диалоги сохранены.",
             )
             for e in ended
         ])

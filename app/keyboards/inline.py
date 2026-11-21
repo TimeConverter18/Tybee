@@ -4,10 +4,10 @@ from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.covers.loader import cover_button, cover_text
-from app.db.models import MysteryBox
 
 
 def main_menu(cover_id: int) -> InlineKeyboardMarkup:
+    """Uniform full-width main menu buttons."""
     kb = InlineKeyboardBuilder()
     kb.button(text=cover_button(cover_id, "BTN_NEW_ORDER"), callback_data="order:start")
     kb.button(text=cover_button(cover_id, "BTN_PROFILE"), callback_data="profile:open")
@@ -30,7 +30,6 @@ def back_button(cover_id: int, target: str) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-mystery_empty = back_to_menu
 cancel_to_menu = back_to_menu
 review_pending = back_to_menu
 
@@ -51,13 +50,12 @@ def back_to_profile(cover_id: int) -> InlineKeyboardMarkup:
 
 
 def order_choice(cover_id: int) -> InlineKeyboardMarkup:
-    """Wide «Персональный заказ», narrow «По артикулу» + «Mystery Box», wide «Назад»."""
+    """Full-width «Персональный заказ», «По артикулу» and «Назад» (Mystery Box removed)."""
     kb = InlineKeyboardBuilder()
     kb.button(text=cover_button(cover_id, "BTN_ORDER_PERSONAL"), callback_data="order:personal")
     kb.button(text=cover_button(cover_id, "BTN_ORDER_ARTICLE"), callback_data="order:article")
-    kb.button(text=cover_button(cover_id, "BTN_ORDER_MYSTERY"), callback_data="order:mystery")
     kb.button(text=cover_button(cover_id, "BTN_BACK"), callback_data="back:menu")
-    kb.adjust(1, 2, 1)
+    kb.adjust(1)
     return kb.as_markup()
 
 
@@ -68,18 +66,6 @@ def article_choice(cover_id: int) -> InlineKeyboardMarkup:
     kb.button(text=cover_button(cover_id, "BTN_NO_ARTICLE"), callback_data="order:personal")
     kb.button(text=cover_button(cover_id, "BTN_BACK"), callback_data="order:start")
     kb.adjust(2, 1)
-    return kb.as_markup()
-
-
-def mystery_boxes(cover_id: int, boxes: list[MysteryBox]) -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    for box in boxes:
-        kb.button(
-            text=cover_button(cover_id, "BTN_MYSTERY_ITEM", title=box.title, price=box.price),
-            callback_data=f"mystery:item:{box.id}",
-        )
-    kb.button(text=cover_button(cover_id, "BTN_BACK"), callback_data="order:start")
-    kb.adjust(1)
     return kb.as_markup()
 
 
