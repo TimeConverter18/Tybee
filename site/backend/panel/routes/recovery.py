@@ -16,7 +16,7 @@ from app.db.models import Staff
 from panel.audit import write_audit
 from panel.auth import csrf_guard, require_perm
 from panel.permissions import Perm
-from scripts.recover_telegram_support import import_history, load_history
+from app.support.recovery import import_history, load_history
 
 router = APIRouter(prefix="/api/recovery", tags=["recovery"], dependencies=[Depends(csrf_guard)])
 manage = require_perm(Perm.RECOVERY_IMPORT)

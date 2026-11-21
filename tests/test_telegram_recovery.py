@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
 from app.db.models import Cover, SupportAttachment, SupportThread, SupportThreadMessage, User
-from scripts.recover_telegram_support import import_history, load_history
+from app.support.recovery import import_history, load_history
 
 
 def _message(message_id: int, sender: str, body: str, *, media: str = "") -> str:
