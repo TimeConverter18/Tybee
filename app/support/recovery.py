@@ -5,13 +5,13 @@ import mimetypes
 import re
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import select
 
 from app.db.base import session_factory
-from app.db.models import Cover, SupportAttachment, SupportThread, SupportThreadMessage, User
+from app.db.models import AvitoProfile, Cover, Order, SupportAttachment, SupportThread, SupportThreadMessage, User
 from app.support.attachments import store_bytes
 
 _MESSAGE_START = re.compile(r'<div class="message ([^"]+)" id="message([^"]+)">')
@@ -71,6 +71,45 @@ def _pg_text(value: str | None) -> str:
         .replace("\\n", "\n")
         .replace("\\r", "\r")
         .replace("\\\\", "\\")
+    )
+
+
+def _pg_int(value: str | None) -> int | None:
+    return int(value) if value not in (None, _NULL, "") else None
+
+
+def _pg_datetime(value: str | None) -> datetime | None:
+    if value in (None, _NULL, ""):
+        return None
+    return datetime.fromisoformat(value)
+
+
+def _restored_order(
+    row: dict[str, str],
+    *,
+    cover_id: int | None,
+    avito_profile_id: int | None,
+) -> Order:
+    created_at = _pg_datetime(row.get("created_at")) or datetime.now(timezone.utc)
+    return Order(
+        id=int(row["id"]),
+        user_id=int(row["user_id"]),
+        type=_pg_text(row.get("type")) or "personal",
+        status=_pg_text(row.get("status")) or "new",
+        article=_pg_text(row.get("article")) or None,
+        title=_pg_text(row.get("title")) or f"Заказ #{row['id']}",
+        price=_pg_int(row.get("price")),
+        description=_pg_text(row.get("description")) or None,
+        created_at=created_at,
+        updated_at=_pg_datetime(row.get("updated_at")) or created_at,
+        cover_id=cover_id,
+        paid_at=_pg_datetime(row.get("paid_at")),
+        paid_amount=_pg_int(row.get("paid_amount")),
+        paid_staff_id=_pg_int(row.get("paid_staff_id")),
+        refunded_at=_pg_datetime(row.get("refunded_at")),
+        refund_amount=_pg_int(row.get("refund_amount")),
+        last_ping_at=_pg_datetime(row.get("last_ping_at")),
+        avito_profile_id=avito_profile_id,
     )
 
 
@@ -282,6 +321,10 @@ def load_history(export_dir: Path, dump_path: Path) -> tuple[list[ExportedMessag
         "directions": dict(Counter(message.direction for message in history)),
         "media": sum(len(message.media) for message in history),
         "orders": sum(message.order_id is not None for message in history),
+        "orders_in_dump": len(order_users),
+        "orders_only_in_export": len(
+            {message.order_id for message in history if message.order_id is not None} - set(order_users)
+        ),
         "buttons": sum(len(message.buttons) for message in history),
         "media_missing": sum(not path.is_file() for message in history for path in message.media),
         "topics": _topic_report(history, old_users),
@@ -321,6 +364,43 @@ async def import_history(
     imported = attachments = 0
     async with factory() as session:
         default_cover = await session.scalar(select(Cover).where(Cover.slug == "default"))
+        old_orders = _last_copy_rows(dump_path, "orders")
+        required_users = set(by_user) | {int(row["user_id"]) for row in old_orders}
+        known_users = set(await session.scalars(select(User.id).where(User.id.in_(required_users))))
+        for client_id in sorted(required_users - known_users):
+            old = old_users[client_id]
+            session.add(
+                User(
+                    id=client_id,
+                    username=_pg_text(old.get("username")) or None,
+                    full_name=_pg_text(old.get("full_name")) or str(client_id),
+                    is_banned=old.get("is_banned") == "t",
+                    source="telegram",
+                )
+            )
+        await session.flush()
+
+        existing_order_ids = set(await session.scalars(select(Order.id)))
+        known_covers = set(await session.scalars(select(Cover.id)))
+        known_profiles = set(await session.scalars(select(AvitoProfile.id)))
+        orders_backfilled = 0
+        for old_order in old_orders:
+            order_id = int(old_order["id"])
+            if order_id in existing_order_ids:
+                continue
+            cover_id = _pg_int(old_order.get("cover_id"))
+            if cover_id not in known_covers:
+                cover_id = default_cover.id if default_cover else None
+            profile_id = _pg_int(old_order.get("avito_profile_id"))
+            if profile_id not in known_profiles:
+                profile_id = None
+            session.add(
+                _restored_order(old_order, cover_id=cover_id, avito_profile_id=profile_id)
+            )
+            existing_order_ids.add(order_id)
+            orders_backfilled += 1
+        await session.commit()
+
         existing_messages = {
             row.request_key: row
             for row in await session.scalars(
@@ -328,18 +408,6 @@ async def import_history(
             )
         }
         for client_id, messages in by_user.items():
-            old = old_users[client_id]
-            user = await session.get(User, client_id)
-            if user is None:
-                user = User(
-                    id=client_id,
-                    username=_pg_text(old.get("username")) or None,
-                    full_name=_pg_text(old.get("full_name")) or str(client_id),
-                    is_banned=old.get("is_banned") == "t",
-                    source="telegram",
-                )
-                session.add(user)
-                await session.flush()
             thread = await session.scalar(select(SupportThread).where(SupportThread.user_id == client_id))
             created_thread = thread is None
             if thread is None:
@@ -400,6 +468,6 @@ async def import_history(
                 thread.last_client_message_at = max(client_dates) if client_dates else None
             await session.commit()
     stats = dict(stats)
-    stats.update({"imported": imported, "attachments": attachments})
+    stats.update({"imported": imported, "attachments": attachments, "orders_backfilled": orders_backfilled})
     return stats
 

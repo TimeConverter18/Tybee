@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
-from app.db.models import Cover, SupportAttachment, SupportThread, SupportThreadMessage, User
+from app.db.models import Cover, Order, SupportAttachment, SupportThread, SupportThreadMessage, User
 from app.support.recovery import import_history, load_history
 
 
@@ -117,11 +117,15 @@ class TelegramRecoveryTestCase(unittest.IsolatedAsyncioTestCase):
                     )
                     existing.order_id = None
                     existing.body = "Старая запись без кнопок"
+                    order = await session.get(Order, 9001)
+                    order.status = "accepted"
                     await session.commit()
                 second = await import_history(export, dump, execute=True, factory=self.factory)
                 self.assertEqual(first["imported"], 4)
                 self.assertEqual(first["attachments"], 1)
+                self.assertEqual(first["orders_backfilled"], 1)
                 self.assertEqual(second["imported"], 0)
+                self.assertEqual(second["orders_backfilled"], 0)
                 self.assertEqual(second["attachments"], 0)
             async with self.factory() as session:
                 user = await session.get(User, 42)
@@ -137,6 +141,8 @@ class TelegramRecoveryTestCase(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("adm:status:9001:accepted", restored.body)
                 client_message = next(message for message in messages if message.direction == "client")
                 self.assertIn("Подробнее (https://example.com/item)", client_message.body)
+                order = await session.get(Order, 9001)
+                self.assertEqual(order.status, "accepted")
                 attachment = await session.scalar(select(SupportAttachment))
                 self.assertFalse(attachment.ephemeral)
                 self.assertEqual(attachment.direction, "in")

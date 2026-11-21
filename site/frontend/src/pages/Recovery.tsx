@@ -11,6 +11,9 @@ type Stats = {
   directions: Record<string, number>;
   media: number;
   orders: number;
+  orders_in_dump: number;
+  orders_only_in_export: number;
+  orders_backfilled?: number;
   buttons: number;
   topics: { user_id: number; messages: number; buttons: number; media: number; orders: number; first_at: string | null; last_at: string | null }[];
   media_missing: number;
@@ -80,6 +83,8 @@ export default function Recovery() {
       <p>Найдено <b>{stats.messages}</b> сообщений для <b>{stats.clients}</b> клиентов.</p>
       <p>Клиент: {stats.directions.client ?? 0} · Поддержка: {stats.directions.staff ?? 0} · Системные: {stats.directions.system ?? 0}</p>
       <p>Вложения: {stats.media} · Кнопки: {stats.buttons} · Связи с заказами: {stats.orders} · Пропущено без привязки: {stats.skipped.unmapped ?? 0}</p>
+      <p>Заказов в дампе: {stats.orders_in_dump}. Отсутствующие в текущей БД будут восстановлены без перезаписи существующих.</p>
+      {stats.orders_only_in_export > 0 && <p className="error">В экспорте есть ID заказов, которых нет в дампе: {stats.orders_only_in_export}. Они не будут выдуманы автоматически.</p>}
       <details>
         <summary>Покрытие всех топиков ({stats.topics.length})</summary>
         <div className="sup-search-results">
@@ -91,7 +96,7 @@ export default function Recovery() {
       {stats.media_missing > 0 && <p className="error">В ZIP отсутствуют файлы: {stats.media_missing}. Импорт остановлен, чтобы история не была неполной.</p>}
       {current.status === "ready" && <p className="muted">Это только отчёт. В базу пока ничего не записано.</p>}
       {running && <p role="status">Импорт выполняется. Не закрывайте сервер; страницу можно обновить.</p>}
-      {current.status === "done" && <p className="ok">Импорт завершён: добавлено {stats.imported ?? 0} сообщений и {stats.attachments ?? 0} вложений. Загруженные исходники удалены.</p>}
+      {current.status === "done" && <p className="ok">Импорт завершён: добавлено {stats.imported ?? 0} сообщений, {stats.attachments ?? 0} вложений и {stats.orders_backfilled ?? 0} заказов. Загруженные исходники удалены.</p>}
       {current.status === "failed" && <p className="error">{current.error || "Импорт не выполнен"}. Файлы сохранены для повторной попытки.</p>}
       {execute.isError && <p className="error">{execute.error.message}</p>}
       <Button disabled={running || current.status === "done" || stats.media_missing > 0 || !stats.messages || execute.isPending} onClick={() => execute.mutate()}>
