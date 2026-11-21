@@ -33,6 +33,7 @@ _COLUMN_PATCHES = (
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'telegram'",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS avito_user_id BIGINT",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS avito_chat_id VARCHAR(64)",
+    "ALTER TABLE users DROP COLUMN IF EXISTS is_admin",
     "ALTER TABLE products ADD COLUMN IF NOT EXISTS description TEXT",
     "ALTER TABLE products ADD COLUMN IF NOT EXISTS photo_file_id VARCHAR(256)",
     "CREATE INDEX IF NOT EXISTS ix_users_username_lower ON users (lower(username))",
