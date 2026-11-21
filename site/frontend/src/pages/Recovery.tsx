@@ -10,6 +10,7 @@ type Stats = {
   clients: number;
   directions: Record<string, number>;
   media: number;
+  orders: number;
   media_missing: number;
   skipped: Record<string, number>;
   imported?: number;
@@ -76,7 +77,7 @@ export default function Recovery() {
       <h2>Результат проверки</h2>
       <p>Найдено <b>{stats.messages}</b> сообщений для <b>{stats.clients}</b> клиентов.</p>
       <p>Клиент: {stats.directions.client ?? 0} · Поддержка: {stats.directions.staff ?? 0} · Системные: {stats.directions.system ?? 0}</p>
-      <p>Вложения: {stats.media} · Пропущено без привязки: {stats.skipped.unmapped ?? 0}</p>
+      <p>Вложения: {stats.media} · Связи с заказами: {stats.orders} · Пропущено без привязки: {stats.skipped.unmapped ?? 0}</p>
       {stats.media_missing > 0 && <p className="error">В ZIP отсутствуют файлы: {stats.media_missing}. Импорт остановлен, чтобы история не была неполной.</p>}
       {current.status === "ready" && <p className="muted">Это только отчёт. В базу пока ничего не записано.</p>}
       {running && <p role="status">Импорт выполняется. Не закрывайте сервер; страницу можно обновить.</p>}

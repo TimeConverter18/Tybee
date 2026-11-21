@@ -22,6 +22,7 @@ _TEXT_RE = re.compile(r'<div class="text">(.*?)</div>', re.S)
 _SERVICE_TEXT_RE = re.compile(r'<div class="body details">(.*?)</div>', re.S)
 _MEDIA_RE = re.compile(r'(?:href|src)="((?:photos|video_files|voice_messages|files|stickers)/[^"]+)"')
 _TOPIC_USER_RE = re.compile(r"·\s*(\d+)")
+_ORDER_ID_RE = re.compile(r"#\s*(\d{1,19})")
 _BOT_SYSTEM_PREFIXES = ("🧵", "📝", "📦", "✅", "❌", "🔔", "💬", "🤝", "🚫")
 _NULL = chr(92) + "N"
 _COPY_END = chr(92) + "."
@@ -35,6 +36,7 @@ class ExportedMessage:
     direction: str
     created_at: datetime
     media: tuple[Path, ...]
+    order_id: int | None = None
 
     @property
     def request_key(self) -> str:
@@ -187,13 +189,26 @@ def load_history(export_dir: Path, dump_path: Path) -> tuple[list[ExportedMessag
             direction = "system" if is_bot_service else "client"
         else:
             direction = "staff"
-        history.append(ExportedMessage(message_id, user_id, body, direction, message["created_at"], media))
+        order_match = _ORDER_ID_RE.search(body)
+        order_id = int(order_match.group(1)) if order_match else None
+        history.append(
+            ExportedMessage(
+                message_id,
+                user_id,
+                body,
+                direction,
+                message["created_at"],
+                media,
+                order_id=order_id,
+            )
+        )
 
     stats = {
         "messages": len(history),
         "clients": len({message.user_id for message in history}),
         "directions": dict(Counter(message.direction for message in history)),
         "media": sum(len(message.media) for message in history),
+        "orders": sum(message.order_id is not None for message in history),
         "media_missing": sum(not path.is_file() for message in history for path in message.media),
         "skipped": dict(skipped),
     }
@@ -215,6 +230,7 @@ async def import_history(
         stats["clients"] = len({message.user_id for message in history})
         stats["directions"] = dict(Counter(message.direction for message in history))
         stats["media"] = sum(len(message.media) for message in history)
+        stats["orders"] = sum(message.order_id is not None for message in history)
         stats["media_missing"] = sum(not path.is_file() for message in history for path in message.media)
     if not execute:
         return stats
@@ -228,11 +244,12 @@ async def import_history(
     imported = attachments = 0
     async with factory() as session:
         default_cover = await session.scalar(select(Cover).where(Cover.slug == "default"))
-        existing_keys = set(
-            await session.scalars(
-                select(SupportThreadMessage.request_key).where(SupportThreadMessage.request_key.is_not(None))
+        existing_messages = {
+            row.request_key: row
+            for row in await session.scalars(
+                select(SupportThreadMessage).where(SupportThreadMessage.request_key.is_not(None))
             )
-        )
+        }
         for client_id, messages in by_user.items():
             old = old_users[client_id]
             user = await session.get(User, client_id)
@@ -262,7 +279,10 @@ async def import_history(
                 session.add(thread)
                 await session.flush()
             for message in messages:
-                if message.request_key in existing_keys:
+                existing = existing_messages.get(message.request_key)
+                if existing is not None:
+                    if existing.order_id is None and message.order_id is not None:
+                        existing.order_id = message.order_id
                     continue
                 row = SupportThreadMessage(
                     thread_id=thread.id,
@@ -270,12 +290,13 @@ async def import_history(
                     kind="message",
                     body=message.body,
                     cover_id=thread.last_cover_id,
+                    order_id=message.order_id,
                     request_key=message.request_key,
                     created_at=message.created_at,
                 )
                 session.add(row)
                 await session.flush()
-                existing_keys.add(message.request_key)
+                existing_messages[message.request_key] = row
                 imported += 1
                 for path in message.media:
                     data = path.read_bytes()
