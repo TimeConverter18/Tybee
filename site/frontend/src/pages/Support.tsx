@@ -164,6 +164,7 @@ const DONE: [RegExp, string][] = [
   [/\/retry$/, "Сообщение отправлено повторно"],
   [/\/invoice$/, "Счёт выставлен"],
   [/\/status$/, "Статус заказа обновлён"],
+  [/\/ban$/, "Статус блокировки клиента обновлён"],
 ];
 const doneText = (path: string) => DONE.find(([pattern]) => pattern.test(path))?.[1] ?? "Готово";
 type ThreadPage = { items: Row[]; next_cursor: string | null; total: number };
@@ -942,6 +943,9 @@ function Chat({ me, id }: { me: Me; id: number }) {
             <Button className="ghost" onClick={() => setSearchOpen(!searchOpen)}>Поиск в чате</Button>
             <Button className="ghost" data-guide="client-button" onClick={() => setClientOpen(true)}>Клиент и заказы ({d.orders?.length ?? 0})</Button>
             {canInvoice && (mine || d.can_refund) && <Button data-guide="invoice" onClick={() => setModal("invoice")}>Счёт</Button>}
+            {mine && <Button className={d.client.is_banned ? "ghost" : "bad"} onClick={() => act.mutate({ path: `threads/${id}/ban`, body: { banned: !d.client.is_banned } })}>
+              {d.client.is_banned ? "Разбанить" : "Забанить"}
+            </Button>}
             {d.assigned_to === null && <Button onClick={() => act.mutate({ path: `threads/${id}/claim` })}>Взять</Button>}
             {canAssign && <Button className="ghost" onClick={() => setModal("transfer")}>Передать</Button>}
             {mine && d.status === "open" && <Button className="ghost" onClick={() => confirm("Закрыть диалог? Клиент получит уведомление.") && act.mutate({ path: `threads/${id}/close` })}>Закрыть</Button>}
@@ -1060,11 +1064,6 @@ function Chat({ me, id }: { me: Me; id: number }) {
         {err && <p className="error">{err}</p>}
         <h2>Клиент</h2>
         <p className="muted">ID {d.client.id}{d.client.source ? ` · ${d.client.source}` : ""}<br />Обложки: {d.covers?.join(", ") || "—"}{d.channel_label && <><br />Канал: {d.channel_label}</>}</p>
-        {mine && (
-          <Button className={d.client.is_banned ? "ghost" : "bad"} onClick={() => act.mutate({ path: `threads/${id}/ban`, body: { banned: !d.client.is_banned } })}>
-            {d.client.is_banned ? "Разбанить" : "Забанить"}
-          </Button>
-        )}
         {d.client.is_banned && <p className="error">Клиент забанен</p>}
         <h2>Заказы</h2>
         {canInvoice && (mine || d.can_refund) && <Button onClick={() => { setClientOpen(false); setModal("invoice"); }}>Выставить счёт</Button>}
