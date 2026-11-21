@@ -11,6 +11,8 @@ type Stats = {
   directions: Record<string, number>;
   media: number;
   orders: number;
+  buttons: number;
+  topics: { user_id: number; messages: number; buttons: number; media: number; orders: number; first_at: string | null; last_at: string | null }[];
   media_missing: number;
   skipped: Record<string, number>;
   imported?: number;
@@ -77,7 +79,15 @@ export default function Recovery() {
       <h2>Результат проверки</h2>
       <p>Найдено <b>{stats.messages}</b> сообщений для <b>{stats.clients}</b> клиентов.</p>
       <p>Клиент: {stats.directions.client ?? 0} · Поддержка: {stats.directions.staff ?? 0} · Системные: {stats.directions.system ?? 0}</p>
-      <p>Вложения: {stats.media} · Связи с заказами: {stats.orders} · Пропущено без привязки: {stats.skipped.unmapped ?? 0}</p>
+      <p>Вложения: {stats.media} · Кнопки: {stats.buttons} · Связи с заказами: {stats.orders} · Пропущено без привязки: {stats.skipped.unmapped ?? 0}</p>
+      <details>
+        <summary>Покрытие всех топиков ({stats.topics.length})</summary>
+        <div className="sup-search-results">
+          <table><thead><tr><th>Клиент ID</th><th>Сообщения</th><th>Кнопки</th><th>Файлы</th><th>Заказы</th></tr></thead>
+            <tbody>{stats.topics.map(topic => <tr key={topic.user_id}><td>{topic.user_id}</td><td>{topic.messages}</td><td>{topic.buttons}</td><td>{topic.media}</td><td>{topic.orders}</td></tr>)}</tbody>
+          </table>
+        </div>
+      </details>
       {stats.media_missing > 0 && <p className="error">В ZIP отсутствуют файлы: {stats.media_missing}. Импорт остановлен, чтобы история не была неполной.</p>}
       {current.status === "ready" && <p className="muted">Это только отчёт. В базу пока ничего не записано.</p>}
       {running && <p role="status">Импорт выполняется. Не закрывайте сервер; страницу можно обновить.</p>}

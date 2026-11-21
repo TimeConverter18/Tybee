@@ -23,6 +23,9 @@ _SERVICE_TEXT_RE = re.compile(r'<div class="body details">(.*?)</div>', re.S)
 _MEDIA_RE = re.compile(r'(?:href|src)="((?:photos|video_files|voice_messages|files|stickers)/[^"]+)"')
 _TOPIC_USER_RE = re.compile(r"·\s*(\d+)")
 _ORDER_ID_RE = re.compile(r"#\s*(\d{1,19})")
+_BUTTON_BLOCK_RE = re.compile(r'<div class="bot_button">(.*?)</div>', re.S)
+_BUTTON_LINK_RE = re.compile(r"<a\b[^>]*>(.*?)</a>", re.S)
+_BUTTON_DATA_RE = re.compile(r"Data:\s*(.*?)\s*\|\s*Type:\s*callback")
 _BOT_SYSTEM_PREFIXES = ("🧵", "📝", "📦", "✅", "❌", "🔔", "💬", "🤝", "🚫")
 _NULL = chr(92) + "N"
 _COPY_END = chr(92) + "."
@@ -37,6 +40,7 @@ class ExportedMessage:
     created_at: datetime
     media: tuple[Path, ...]
     order_id: int | None = None
+    buttons: tuple[str, ...] = ()
 
     @property
     def request_key(self) -> str:
@@ -44,6 +48,16 @@ class ExportedMessage:
 
 
 def _plain(value: str) -> str:
+    def link_text(match: re.Match) -> str:
+        href = html.unescape(match.group(1)).strip()
+        label = re.sub(r"<[^>]+>", "", match.group(2)).strip()
+        if not href or href.startswith(("tel:", "javascript:")) or href == label:
+            return label
+        if label.startswith("@") and href.startswith("https://t.me/"):
+            return label
+        return f"{label} ({href})"
+
+    value = re.sub(r'<a\b[^>]*href="([^"]*)"[^>]*>(.*?)</a>', link_text, value, flags=re.S)
     value = re.sub(r"<br\s*/?>", "\n", value, flags=re.I)
     value = re.sub(r"<[^>]+>", "", value)
     return html.unescape(value).strip()
@@ -106,6 +120,53 @@ def _media_paths(block: str, root: Path) -> tuple[Path, ...]:
     return tuple(paths)
 
 
+def _buttons(block: str) -> tuple[str, ...]:
+    result: list[str] = []
+    for raw in _BUTTON_BLOCK_RE.findall(block):
+        decoded = html.unescape(raw)
+        link = _BUTTON_LINK_RE.search(decoded)
+        data = _BUTTON_DATA_RE.search(decoded)
+        label = _plain(link.group(1)) if link else "Кнопка"
+        result.append(f"{label} — {data.group(1)}" if data else label)
+    return tuple(result)
+
+
+def _with_buttons(body: str, buttons: tuple[str, ...]) -> str:
+    if not buttons:
+        return body
+    suffix = "Кнопки:\n" + "\n".join(f"• {button}" for button in buttons)
+    return f"{body}\n\n{suffix}" if body else suffix
+
+
+def _topic_report(history: list[ExportedMessage], old_users: dict[int, dict[str, str]]) -> list[dict]:
+    by_user: dict[int, dict] = {}
+    covered = {message.user_id for message in history}
+    for user_id, old in old_users.items():
+        if old.get("support_thread_id") in (None, _NULL) and user_id not in covered:
+            continue
+        by_user[user_id] = {
+            "user_id": user_id,
+            "messages": 0,
+            "buttons": 0,
+            "media": 0,
+            "orders": 0,
+            "first_at": None,
+            "last_at": None,
+        }
+    for message in history:
+        row = by_user[message.user_id]
+        row["messages"] += 1
+        row["buttons"] += len(message.buttons)
+        row["media"] += len(message.media)
+        row["orders"] += message.order_id is not None
+        stamp = message.created_at.isoformat()
+        if row["first_at"] is None or stamp < row["first_at"]:
+            row["first_at"] = stamp
+        if row["last_at"] is None or stamp > row["last_at"]:
+            row["last_at"] = stamp
+    return sorted(by_user.values(), key=lambda row: row["user_id"])
+
+
 def load_history(export_dir: Path, dump_path: Path) -> tuple[list[ExportedMessage], dict]:
     relay_users = _relay_users(dump_path)
     old_users = _old_users(dump_path)
@@ -144,8 +205,13 @@ def load_history(export_dir: Path, dump_path: Path) -> tuple[list[ExportedMessag
             "body": body,
             "created_at": datetime.strptime(html.unescape(date_match.group(1)), "%d.%m.%Y %H:%M:%S UTC%z") if date_match else None,
             "media": _media_paths(block, export_dir) if not service else (),
+            "buttons": _buttons(block) if not service else (),
         }
 
+    order_users = {
+        int(row["id"]): int(row["user_id"])
+        for row in _last_copy_rows(dump_path, "orders")
+    }
     mapped: dict[int, int] = {}
     for message_id, message in raw_messages.items():
         seen: set[int] = set()
@@ -159,6 +225,11 @@ def load_history(export_dir: Path, dump_path: Path) -> tuple[list[ExportedMessag
                 mapped[message_id] = relay_users[target]
                 break
             target = raw_messages.get(target, {}).get("reply_to")
+        if message_id not in mapped:
+            order_match = _ORDER_ID_RE.search(message["body"])
+            order_user = order_users.get(int(order_match.group(1))) if order_match else None
+            if order_user is not None:
+                mapped[message_id] = order_user
 
     history: list[ExportedMessage] = []
     previous_sender = ""
@@ -179,7 +250,8 @@ def load_history(export_dir: Path, dump_path: Path) -> tuple[list[ExportedMessag
         if message["created_at"] is None:
             skipped["missing_date"] += 1
             continue
-        body = message["body"]
+        buttons = message["buttons"]
+        body = _with_buttons(message["body"], buttons)
         media = message["media"]
         if not body and not media:
             skipped["empty"] += 1
@@ -200,6 +272,7 @@ def load_history(export_dir: Path, dump_path: Path) -> tuple[list[ExportedMessag
                 message["created_at"],
                 media,
                 order_id=order_id,
+                buttons=buttons,
             )
         )
 
@@ -209,7 +282,9 @@ def load_history(export_dir: Path, dump_path: Path) -> tuple[list[ExportedMessag
         "directions": dict(Counter(message.direction for message in history)),
         "media": sum(len(message.media) for message in history),
         "orders": sum(message.order_id is not None for message in history),
+        "buttons": sum(len(message.buttons) for message in history),
         "media_missing": sum(not path.is_file() for message in history for path in message.media),
+        "topics": _topic_report(history, old_users),
         "skipped": dict(skipped),
     }
     return history, stats
@@ -231,6 +306,8 @@ async def import_history(
         stats["directions"] = dict(Counter(message.direction for message in history))
         stats["media"] = sum(len(message.media) for message in history)
         stats["orders"] = sum(message.order_id is not None for message in history)
+        stats["buttons"] = sum(len(message.buttons) for message in history)
+        stats["topics"] = _topic_report(history, _old_users(dump_path))
         stats["media_missing"] = sum(not path.is_file() for message in history for path in message.media)
     if not execute:
         return stats
@@ -283,6 +360,8 @@ async def import_history(
                 if existing is not None:
                     if existing.order_id is None and message.order_id is not None:
                         existing.order_id = message.order_id
+                    if existing.body != message.body:
+                        existing.body = message.body
                     continue
                 row = SupportThreadMessage(
                     thread_id=thread.id,
