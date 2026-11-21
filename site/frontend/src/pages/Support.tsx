@@ -1,4 +1,4 @@
-import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
+﻿import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,7 @@ type Row = {
   assigned_to: number | null; assigned_name: string | null; last_message: string; last_message_at: string | null;
   client: { id: number; name: string; username: string | null; is_banned: boolean; source?: string | null };
   client_orders: ClientOrders;
+  has_paid_order?: boolean; has_invoiced_order?: boolean;
 };
 // Hover preview in the thread list: the client's newest order in full plus the orders before it.
 type ClientOrderBrief = {
