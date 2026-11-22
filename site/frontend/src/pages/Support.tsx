@@ -63,6 +63,8 @@ type Msg = {
   created_at: string | null; delivery: "pending" | "sent" | "failed" | "uncertain" | null; can_retry: boolean; error: string | null;
   attachments: Attachment[]; channel_label: string | null; cover: string | null; order: MsgOrder | null;
 };
+const compareMessages = (a: Msg, b: Msg) =>
+  (Date.parse(a.created_at ?? "") || 0) - (Date.parse(b.created_at ?? "") || 0) || a.id - b.id;
 
 const fmtSize = (n: number) =>
   n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} МБ` : n >= 1024 ? `${Math.round(n / 1024)} КБ` : `${n} Б`;
@@ -610,12 +612,12 @@ function Chat({ me, id }: { me: Me; id: number }) {
   });
   const messageCache = useRef<{ source: unknown; value: Msg[] }>({ source: null, value: [] });
   if (messageCache.current.source !== history.data) {
-    messageCache.current = { source: history.data, value: [...new Map([...(history.data?.pages ?? [])].reverse().flat().map((m) => [m.id, m])).values()].sort((a,b) => a.id-b.id) };
+    messageCache.current = { source: history.data, value: [...new Map([...(history.data?.pages ?? [])].reverse().flat().map((m) => [m.id, m])).values()].sort(compareMessages) };
   }
   const msgs = { data: history.data ? messageCache.current.value : undefined, isPlaceholderData: false };
-  // New messages are appended by id; the history is never re-downloaded on a push.
+  // New rows are merged by id, while the visible timeline stays chronological.
   const lastMsgId = useRef(0);
-  lastMsgId.current = msgs.data?.[msgs.data.length - 1]?.id ?? lastMsgId.current;
+  lastMsgId.current = msgs.data?.reduce((max, message) => Math.max(max, message.id), lastMsgId.current) ?? lastMsgId.current;
   const pullNew = useCallback(async () => {
     const after = lastMsgId.current;
     if (!after) return;
@@ -628,7 +630,7 @@ function Chat({ me, id }: { me: Me; id: number }) {
         const known = new Set(newest.map((m) => m.id));
         const added = fresh.filter((m) => !known.has(m.id));
         if (!added.length) return old;
-        return { ...old, pages: [[...newest, ...added].sort((a, b) => a.id - b.id), ...old.pages.slice(1)] };
+        return { ...old, pages: [[...newest, ...added].sort(compareMessages), ...old.pages.slice(1)] };
       });
     } catch { /* the next push or the fallback poll retries */ }
   }, [id, qc]);

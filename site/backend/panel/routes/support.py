@@ -590,11 +590,31 @@ async def get_messages(
     if q and q.strip():
         stmt = stmt.where(func.lower(SupportThreadMessage.body).contains(q.strip().lower(), autoescape=True))
     if before_id is not None:
-        stmt = stmt.where(SupportThreadMessage.id < before_id)
+        cursor = await session.get(SupportThreadMessage, before_id)
+        if cursor is not None:
+            stmt = stmt.where(
+                or_(
+                    SupportThreadMessage.created_at < cursor.created_at,
+                    and_(
+                        SupportThreadMessage.created_at == cursor.created_at,
+                        SupportThreadMessage.id < before_id,
+                    ),
+                )
+            )
     if after_id is not None:
-        rows = list(await session.scalars(stmt.where(SupportThreadMessage.id > after_id).order_by(SupportThreadMessage.id).limit(200)))
+        rows = list(
+            await session.scalars(
+                stmt.where(SupportThreadMessage.id > after_id)
+                .order_by(SupportThreadMessage.created_at, SupportThreadMessage.id)
+                .limit(200)
+            )
+        )
     else:
-        rows = list(await session.scalars(stmt.order_by(SupportThreadMessage.id.desc()).limit(200)))[::-1]
+        rows = list(
+            await session.scalars(
+                stmt.order_by(SupportThreadMessage.created_at.desc(), SupportThreadMessage.id.desc()).limit(200)
+            )
+        )[::-1]
     outbox_ids = [m.outbox_id for m in rows if m.outbox_id]
     outboxes = {}
     if outbox_ids:
