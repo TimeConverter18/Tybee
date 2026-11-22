@@ -37,8 +37,6 @@ NO_PING_STATUSES = FINAL_STATUSES
 # Statuses staff can set from the site.
 SETTABLE = frozenset({*DELIVERY, "refund_pending", "refunded", "cancelled"})
 
-# Roles that take auto-assigned threads.
-ASSIGNABLE_ROLES = ("client_manager_1", "client_manager_2")
 # Roles that receive Telegram notifications for new clients and unassigned requests.
 NOTIFY_ROLES = ("client_manager_1", "client_manager_2", "support_lead", "arbitration_agent", "admin")
 

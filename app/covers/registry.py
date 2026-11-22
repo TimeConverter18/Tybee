@@ -44,15 +44,3 @@ def get_by_slug(slug: str) -> RunningCover | None:
         if running.slug == slug:
             return running
     return None
-
-
-def is_running(cover_id: int) -> bool:
-    return cover_id in _by_id
-
-
-def running() -> list[RunningCover]:
-    return list(_by_id.values())
-
-
-def clear() -> None:
-    _by_id.clear()

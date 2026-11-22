@@ -14,9 +14,7 @@ from app.db.models import (
     Cover,
     CoverMediaCache,
     CoverProductPhoto,
-    MysteryBox,
     Order,
-    OrderStatus,
     Product,
     User,
     UserCover,
@@ -98,18 +96,6 @@ async def find_product_by_article(session: AsyncSession, article: str) -> Produc
     )
 
 
-# ---- Mystery boxes ----
-async def list_available_boxes(session: AsyncSession) -> list[MysteryBox]:
-    result = await session.scalars(
-        select(MysteryBox).where(MysteryBox.available.is_(True)).order_by(MysteryBox.price)
-    )
-    return list(result)
-
-
-async def get_box(session: AsyncSession, box_id: int) -> MysteryBox | None:
-    return await session.get(MysteryBox, box_id)
-
-
 # ---- Orders ----
 def _new_order_id() -> int:
     """Generate a random 9–10 digit public order ID."""
@@ -151,12 +137,6 @@ async def count_user_orders(session: AsyncSession, user_id: int, cover_id: int) 
         .select_from(Order)
         .where(Order.user_id == user_id, Order.cover_id == cover_id)
     ) or 0
-
-
-async def set_order_status(session: AsyncSession, order: Order, status: OrderStatus) -> None:
-    order.status = status.value
-    await session.flush()
-    await session.refresh(order)
 
 
 # ---- Media cache (per cover: file_ids are bot-specific) ----

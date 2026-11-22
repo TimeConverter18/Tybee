@@ -33,14 +33,6 @@ export function CustomSelect({ children, value, onChange, disabled, style, ...pr
   </Select>;
 }
 function isoDate(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
-export function CustomDate({ value, onChange, disabled, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  const [open, setOpen] = useState(false);
-  const selected = value ? new Date(`${value}T12:00:00`) : undefined;
-  const choose = (v: string) => { onChange?.({ target: { value: v }, currentTarget: { value: v } } as ChangeEvent<HTMLInputElement>); setOpen(false); };
-  return <Popover open={open} onOpenChange={setOpen}><PopoverTrigger asChild><Button type="button" variant="outline" className="app-date-trigger" disabled={disabled} aria-label={props["aria-label"] || "Выбрать дату"}>{value ? String(value).split("-").reverse().join(".") : "Выберите дату"}<CalendarDays size={16} /></Button></PopoverTrigger>
-    <PopoverContent className="app-calendar-popover" align="start"><Calendar mode="single" locale={ru} selected={selected} defaultMonth={selected} onSelect={(date) => choose(date ? isoDate(date) : "")} /><div className="date-actions"><Button type="button" variant="link" onClick={() => choose("")}>Очистить</Button><Button type="button" variant="link" onClick={() => choose(isoDate(new Date()))}>Сегодня</Button></div></PopoverContent>
-  </Popover>;
-}
 export function CustomCheckbox({ checked, onChange, disabled, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <Checkbox checked={checked} disabled={disabled} className="app-checkbox" aria-label={props["aria-label"]} onCheckedChange={(v) => onChange?.({ target: { checked: v === true }, currentTarget: { checked: v === true } } as ChangeEvent<HTMLInputElement>)} />;
 }

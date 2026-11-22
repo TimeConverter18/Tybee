@@ -2,7 +2,7 @@
 // (which banner sits above the text and which buttons go under it).
 // Keys missing here still work: the editor falls back to the raw key.
 
-export type TextMeta = { label: string; hint?: string; banner?: string; kb?: string };
+type TextMeta = { label: string; hint?: string; banner?: string; kb?: string };
 
 export const TEXT_META: Record<string, TextMeta> = {
   WELCOME: { label: "Приветствие", hint: "Главный экран после /start", banner: "welcome", kb: "main_menu" },

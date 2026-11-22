@@ -97,7 +97,7 @@ export const AUDIT_GROUPS: Record<string, string> = {
   auth: "Вход", staff: "Сотрудники", support: "Поддержка", finance: "Финансы", catalog: "Каталог",
   cover: "Боты-обложки", avito: "Авито", robokassa: "Robokassa", broadcast: "Рассылки",
 };
-export const AUDIT_ACTIONS: Record<string, string> = {
+const AUDIT_ACTIONS: Record<string, string> = {
   "support.note": "Внутренняя заметка",
   "support.retry": "Повтор отправки сообщения",
   "support.template.create": "Создан шаблон ответа",

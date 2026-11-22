@@ -614,7 +614,7 @@ function Chat({ me, id }: { me: Me; id: number }) {
   if (messageCache.current.source !== history.data) {
     messageCache.current = { source: history.data, value: [...new Map([...(history.data?.pages ?? [])].reverse().flat().map((m) => [m.id, m])).values()].sort(compareMessages) };
   }
-  const msgs = { data: history.data ? messageCache.current.value : undefined, isPlaceholderData: false };
+  const msgs = { data: history.data ? messageCache.current.value : undefined };
   // New rows are merged by id, while the visible timeline stays chronological.
   const lastMsgId = useRef(0);
   lastMsgId.current = msgs.data?.reduce((max, message) => Math.max(max, message.id), lastMsgId.current) ?? lastMsgId.current;
@@ -641,7 +641,7 @@ function Chat({ me, id }: { me: Me; id: number }) {
     document.addEventListener("visibilitychange", onVisible);
     return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
   }, [pullNew, live]);
-  const switching = detail.isPlaceholderData || msgs.isPlaceholderData || !detail.data || (!msgs.data && !history.isError);
+  const switching = detail.isPlaceholderData || !detail.data || (!msgs.data && !history.isError);
   useEffect(() => { if (chatBox.current) chatBox.current.inert = switching; }, [switching]);
   useLayoutEffect(() => {
     followLatest.current = true;
@@ -846,18 +846,7 @@ function Chat({ me, id }: { me: Me; id: number }) {
   // Drag & drop: a file dropped anywhere on the chat becomes the attachment.
   const canDrop = mine && mode === "reply" && !sendReply.isPending;
   const acceptFile = (picked: File | null) => {
-    if (!picked) return;
-    if (!ACCEPT.split(",").includes(picked.type)) {
-      setErr("Можно прикрепить JPEG, PNG, WebP или PDF");
-      return;
-    }
-    const limit = picked.type === "application/pdf" ? 20 * 1024 * 1024 : 10 * 1024 * 1024;
-    if (picked.size > limit) {
-      setErr(`Файл больше ${Math.round(limit / 1024 / 1024)} МБ`);
-      return;
-    }
-    setErr("");
-    pickFile(picked);
+    if (picked) pickDialogFile(picked, pickFile, setErr);
   };
   const hasFiles = (event: DragEvent<HTMLDivElement>) => Array.from(event.dataTransfer.types ?? []).includes("Files");
   const onDragEnter = (event: DragEvent<HTMLDivElement>) => {
@@ -1191,7 +1180,6 @@ export default function Support({ me }: { me: Me }) {
   // The panel-wide socket (App.tsx) already refreshes these caches on push.
   const { connected, syncedAt } = useRealtimeState();
   const connection = connected ? "Онлайн" : "Переподключаемся · резервное обновление каждые 15 с";
-  const qc = useQueryClient();
   const { id } = useParams();
   const tid = id ? Number(id) : undefined;
   const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 1000px)").matches);

@@ -315,7 +315,7 @@ class Staff(Base):
     photo_url: Mapped[str | None] = mapped_column(Text)
     position: Mapped[str | None] = mapped_column(String(128))
     created_by: Mapped[int | None] = mapped_column(BigInteger)
-    # Support shift: only staff "on shift" receive auto-assigned threads.
+    # Support shift and the timestamp of the latest manual assignment.
     on_shift: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     last_assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Presence while on shift: any open panel tab pings ``last_seen_at``; real input

@@ -20,7 +20,7 @@ def unsubscribe(queue: asyncio.Queue) -> None:
     _subscribers.discard(queue)
 
 
-def publish(topic: str = "support") -> None:
+def publish(topic: str) -> None:
     for queue in tuple(_subscribers):
         try:
             queue.put_nowait(topic)

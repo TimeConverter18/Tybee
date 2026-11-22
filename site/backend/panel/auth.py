@@ -104,17 +104,6 @@ async def current_staff(request: Request, session: AsyncSession = Depends(get_se
     return staff
 
 
-def require_role(*roles: StaffRole):
-    allowed = {r.value for r in roles}
-
-    async def dependency(staff: Staff = Depends(current_staff)) -> Staff:
-        if staff.role != StaffRole.ADMIN.value and staff.role not in allowed:
-            raise HTTPException(403, "Недостаточно прав")
-        return staff
-
-    return dependency
-
-
 def require_perm(*perms: Perm):
     needed = set(perms)
 

@@ -68,7 +68,6 @@ class _Job:
     task: asyncio.Task | None = None
     dp: Dispatcher | None = None
     stop_event: asyncio.Event = field(default_factory=asyncio.Event)
-    unauthorized: bool = False
 
 
 class Supervisor:
@@ -241,7 +240,6 @@ class Supervisor:
             except asyncio.CancelledError:
                 raise
             except TelegramUnauthorizedError:
-                job.unauthorized = True
                 self._blocked[job.cover_id] = job.token_fp
                 await self._update_cover(
                     job.cover_id, last_error="Unauthorized: токен бота отклонён Telegram"

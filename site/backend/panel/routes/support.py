@@ -72,11 +72,6 @@ def _wrap(exc: SupportError) -> HTTPException:
     return HTTPException(exc.status, str(exc), headers=headers)
 
 
-def _require_shift(me: Staff) -> None:
-    """Shifts are informational only; staff can work with dialogs regardless of shift status."""
-    return
-
-
 async def _avito_titles(session: AsyncSession, chat_refs: set[int]) -> dict[int, str]:
     """avito_chats.id -> "Avito · {profile title}"."""
     if not chat_refs:
@@ -812,14 +807,6 @@ TEXT_LIMIT = 3500
 
 
 async def _read_reply(request: Request) -> tuple[str, UploadFile | None]:
-    """``multipart/form-data`` (text, file) or legacy JSON ``{"text": ...}``."""
-    if request.headers.get("content-type", "").startswith("application/json"):
-        try:
-            data = await request.json()
-        except ValueError:
-            raise HTTPException(422, "Неверный JSON") from None
-        text = data.get("text") if isinstance(data, dict) else None
-        return (text if isinstance(text, str) else ""), None
     form = await request.form(max_files=1, max_fields=5)
     text = form.get("text")
     upload = form.get("file")
@@ -873,8 +860,6 @@ async def start_client_dialog(
                 raise HTTPException(409, "Ключ уже использован в другом действии")
             return {"thread_id": previous.thread_id, "message_id": previous.id}
 
-    # Read the body before any early refusal: an unread multipart upload would
-    # reset the connection and the browser would lose the "начать смену" answer.
     text, upload = await _read_reply(request)
 
     me = await session.scalar(
@@ -885,7 +870,6 @@ async def start_client_dialog(
     )
     if me is None or not me.is_active or Perm.SUPPORT_CHAT not in perms_of(me):
         raise HTTPException(403, "Доступ к поддержке отключён")
-    _require_shift(me)
 
     user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
     if user is None:
@@ -969,12 +953,7 @@ async def reply(thread_id: int, request: Request, me: Staff = Depends(require_pe
             if previous.thread_id != thread_id or previous.direction != "staff":
                 raise HTTPException(409, "Ключ уже использован в другом диалоге")
             return {"id": previous.id}
-    # Checked after the idempotency lookup: a retry of an already delivered
-    # message must not fail just because the shift ended in between.
-    # The body is read first so an unread upload cannot reset the connection
-    # and hide the "начать смену" answer from the browser.
     text, upload = await _read_reply(request)
-    _require_shift(me)
     expected_route = request.headers.get("X-Support-Route")
     route = f"{thread.channel}:{thread.last_avito_chat_ref if thread.channel == 'avito' else thread.last_cover_id}"
     if expected_route and expected_route != route:
@@ -1013,7 +992,6 @@ async def claim(thread_id: int, me: Staff = Depends(require_perm(Perm.SUPPORT_CH
     me = await session.scalar(select(Staff).where(Staff.telegram_id == me.telegram_id).with_for_update().execution_options(populate_existing=True))
     if me is None or not me.is_active or Perm.SUPPORT_CHAT not in perms_of(me):
         raise HTTPException(403, "Доступ к поддержке отключён")
-    _require_shift(me)
     if not await assign.claim(session, thread_id, me):
         await session.rollback()
         raise HTTPException(409, "Ветку уже взял другой сотрудник")

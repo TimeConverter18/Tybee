@@ -10,7 +10,7 @@ import { TableSkeletonRows } from "../Skeletons";
 import { toast } from "../Toaster";
 
 type Quality = { speed: number; fullness: number; coefficient: number; avg_chars: number; median_answer_sec: number | null };
-export type PayrollRow = {
+type PayrollRow = {
   staff_id: number; name: string; role: string; period: string; base_salary_kop: number;
   messages_count: number; message_rate_kop: number; messages_kop: number;
   new_clients_count: number; client_rate_kop: number; clients_kop: number; dialogue_kop: number;

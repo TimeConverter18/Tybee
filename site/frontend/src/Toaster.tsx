@@ -2,8 +2,8 @@
 // stop confirming themselves in five different ways.
 import { useSyncExternalStore } from "react";
 
-export type ToastTone = "ok" | "error" | "info";
-export type ToastAction = { label: string; run: () => void };
+type ToastTone = "ok" | "error" | "info";
+type ToastAction = { label: string; run: () => void };
 type ToastItem = { id: number; text: string; tone: ToastTone; action?: ToastAction };
 
 let items: ToastItem[] = [];
