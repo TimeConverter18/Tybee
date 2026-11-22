@@ -12,8 +12,6 @@ from app.db.models import FinanceOperation, PayoutRequest, Staff
 from app.finance import ledger, payroll as payroll_rules
 from app.finance.common import MAX_KOP, FinanceError
 
-REQUISITES_MAX = 500
-
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)

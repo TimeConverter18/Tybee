@@ -6,8 +6,6 @@ import { useEffect, useState } from "react";
 let offline = typeof navigator !== "undefined" && !navigator.onLine;
 const listeners = new Set<(value: boolean) => void>();
 
-export const isOffline = () => offline;
-
 export function setOffline(value: boolean) {
   if (offline === value) return;
   offline = value;

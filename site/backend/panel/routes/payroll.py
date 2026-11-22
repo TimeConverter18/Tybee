@@ -12,10 +12,10 @@ from app.finance import notify as fnotify
 from app.finance import payroll
 from app.finance.common import FinanceError
 from panel.audit import write_audit
-from panel.auth import csrf_guard, current_staff, require_perm
+from panel.auth import csrf_guard, require_perm
 from panel.deps import get_session
 from panel.permissions import Perm, manageable_roles, perms_of
-from panel.routes.finance import _target
+from panel.routes.finance import _target, require_any
 
 router = APIRouter(prefix="/api/finance", tags=["payroll"], dependencies=[Depends(csrf_guard)])
 
@@ -24,17 +24,6 @@ PERIOD = r"^\d{4}-(0[1-9]|1[0-2])$"
 
 def _wrap(exc: FinanceError) -> HTTPException:
     return HTTPException(exc.status, str(exc))
-
-
-def require_any(*perms: Perm):
-    needed = set(perms)
-
-    async def dependency(staff: Staff = Depends(current_staff)) -> Staff:
-        if not needed & perms_of(staff):
-            raise HTTPException(403, "Недостаточно прав")
-        return staff
-
-    return dependency
 
 
 async def _payroll_staff_ids(session: AsyncSession, me: Staff) -> list[int] | None:

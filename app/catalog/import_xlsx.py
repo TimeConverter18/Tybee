@@ -243,17 +243,17 @@ async def preview_import(session: AsyncSession, data: bytes) -> dict:
     }
 
 
-async def import_products(session: AsyncSession, data: bytes, choices: dict[str, str] | None = None) -> ImportResult:
-    """Import selected values atomically; callers commit. Legacy callers keep existing products."""
+async def import_products(session: AsyncSession, data: bytes, choices: dict[str, str]) -> ImportResult:
+    """Import selected values atomically; callers commit."""
     parsed = await asyncio.to_thread(parse_xlsx, data)
     existing = await existing_products(session, parsed)
-    if choices is not None and any(choices.get(row.article) not in ("current", "xlsx") for row in parsed.rows if row.article in existing and differs(existing[row.article], row)):
+    if any(choices.get(row.article) not in ("current", "xlsx") for row in parsed.rows if row.article in existing and differs(existing[row.article], row)):
         raise CatalogError("Выберите вариант для каждого совпавшего артикула. Если каталог изменился, загрузите файл заново", status=409)
     result = ImportResult(errors=list(parsed.errors))
     for row in parsed.rows:
         product = existing.get(row.article)
         if product is not None:
-            if not differs(product, row) or choices is None or choices[row.article] == "current":
+            if not differs(product, row) or choices[row.article] == "current":
                 result.skipped += 1
                 continue
             for key in ("title", "price", "description", "available"):

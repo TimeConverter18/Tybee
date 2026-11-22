@@ -12,10 +12,10 @@ import { toast } from "../Toaster";
 
 type Profile = {
   id: number; slug: string; title: string; client_id: string; account_id: number | null; enabled: boolean;
-  last_error: string | null; clients: number; webhook_subscribed: boolean; updated_at: string | null;
+  last_error: string | null; clients: number; webhook_subscribed: boolean;
 };
 type List = { key_configured: boolean; webhook_base: string | null; profiles: Profile[] };
-type Secret = { slug: string; webhook_secret: string; webhook_url: string };
+type Secret = { slug: string; webhook_url: string };
 
 function ProfileForm({ initial, onDone }: { initial?: Profile; onDone: () => void }) {
   const qc = useQueryClient();
@@ -73,7 +73,7 @@ export default function Avito() {
       body !== undefined ? api(`/api/avito/profiles/${p.id}${path}`, json("PATCH", body)) : api(`/api/avito/profiles/${p.id}${path}`, { method: "POST" }),
     onSuccess: (data: any, variables) => {
       setErr("");
-      if (data?.webhook_secret) setSecret({ slug: data.slug, webhook_secret: data.webhook_secret, webhook_url: data.webhook_url });
+      if (data?.webhook_secret) setSecret({ slug: data.slug, webhook_url: data.webhook_url });
       qc.invalidateQueries({ queryKey: ["avito"] });
       if (!data?.webhook_secret) toast(variables.path.endsWith("/check") ? "Проверка выполнена" : "Профиль обновлён");
     },

@@ -1,35 +1,11 @@
-"""Thread assignment: automatic (least loaded client manager on shift), claim and transfer."""
+"""Thread assignment: claim, transfer and release on deactivation."""
 from __future__ import annotations
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Staff, SupportThread, SupportThreadMessage
-from app.support.common import ASSIGNABLE_ROLES, SupportError, now, ts
-
-
-async def auto_assign(session: AsyncSession, thread: SupportThread) -> Staff | None:
-    candidates = list(
-        await session.scalars(
-            select(Staff).where(
-                Staff.role.in_(ASSIGNABLE_ROLES), Staff.is_active.is_(True), Staff.on_shift.is_(True)
-            )
-        )
-    )
-    if not candidates:
-        return None
-    load = dict(
-        (await session.execute(
-            select(SupportThread.assigned_to, func.count())
-            .where(SupportThread.status == "open", SupportThread.assigned_to.in_([c.telegram_id for c in candidates]))
-            .group_by(SupportThread.assigned_to)
-        )).all()
-    )
-    best = min(candidates, key=lambda c: (load.get(c.telegram_id, 0), ts(c.last_assigned_at), c.telegram_id))
-    thread.assigned_to = best.telegram_id
-    thread.assigned_at = now()
-    best.last_assigned_at = now()
-    return best
+from app.support.common import SupportError, now
 
 
 async def claim(session: AsyncSession, thread_id: int, staff: Staff) -> bool:

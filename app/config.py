@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -12,9 +12,7 @@ class Settings(BaseSettings):
 
     # Used ONLY to create covers/default/config.yaml on first start; afterwards
     # every cover (including "default") takes its token from its config.yaml.
-    bot_token: str = Field(
-        default="", validation_alias=AliasChoices("TYBEE_BOT_TOKEN", "TAIBI_BOT_TOKEN", "BOT_TOKEN")
-    )
+    bot_token: str = Field(default="", validation_alias="TYBEE_BOT_TOKEN")
 
     unban_fine_rub: int = 50
     profile_orders_limit: int = Field(default=10, ge=1)
@@ -40,7 +38,7 @@ class Settings(BaseSettings):
     web_login_bot_username: str = ""
     web_session_secret: str = ""
     web_public_url: str = ""
-    web_dev_login: bool = Field(default=False, validation_alias=AliasChoices("WEB_DEV_LOGIN", "DEV"))
+    web_dev_login: bool = Field(default=False, validation_alias="DEV")
     web_cookie_secure: bool = False
     web_forwarded_allow_ips: str = Field(default="127.0.0.1,::1", validation_alias="FORWARDED_ALLOW_IPS")
 

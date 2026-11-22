@@ -108,9 +108,9 @@ export default function Login() {
   // Dev mode: list the whole team so any role can be checked without a Telegram account.
   useEffect(() => {
     if (!cfg?.dev_login) return;
-    api<{ items?: DevStaff[] } | DevStaff[]>("/api/auth/dev-staff")
+    api<{ items: DevStaff[] }>("/api/auth/dev-staff")
       .then((r) => {
-        const items = Array.isArray(r) ? r : (Array.isArray(r?.items) ? r.items : []);
+        const items = r.items;
         setDevStaff(items);
         setDevId((current) => {
           if (items.some((s) => String(s.telegram_id) === current)) return current;

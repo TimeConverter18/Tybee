@@ -15,7 +15,7 @@ export function Skeleton({ style, className = "" }: { style?: CSSProperties; cla
 }
 
 /** Placeholder lines for a block of text. */
-export function SkeletonText({ lines = 3, className = "" }: { lines?: number; className?: string }) {
+export function SkeletonText({ lines = 3 }: { lines?: number }) {
   return (
     <div className="sk-text" aria-hidden="true">
       {Array.from({ length: lines }, (_, i) => (

@@ -63,7 +63,7 @@ function walk(node: Node, key: number): ReactNode {
   }
 }
 
-export function renderTg(html: string): ReactNode {
+function renderTg(html: string): ReactNode {
   return Array.from(parse(html).childNodes).map((n, i) => walk(n, i));
 }
 

@@ -8,10 +8,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, fmtDate } from "../api";
 import { TableSkeletonRows } from "../Skeletons";
 
-type CoverOpt = { id: number; slug: string; enabled: boolean; bot_username: string | null };
+type CoverOpt = { id: number; slug: string; enabled: boolean };
 type Row = {
   id: number; status: string; body: string; has_image: boolean; covers: string[]; total: number; sent: number; failed: number;
-  fail_reasons: Record<string, number>; created_at: string | null; finished_at: string | null;
+  fail_reasons: Record<string, number>; created_at: string | null;
 };
 const STATUS: Record<string, { label: string; cls: string }> = {
   queued: { label: "В очереди", cls: "wait" }, running: { label: "Идёт", cls: "wait" }, done: { label: "Завершена", cls: "ok" },

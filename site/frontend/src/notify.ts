@@ -7,7 +7,7 @@ import type { SupportSummary } from "./Shift";
 const BASE_TITLE = "Тайби — панель";
 const PREFS_KEY = "tybee:notify";
 
-export type NotifyPrefs = { sound: boolean; browser: boolean };
+type NotifyPrefs = { sound: boolean; browser: boolean };
 
 const DEFAULTS: NotifyPrefs = { sound: true, browser: false };
 

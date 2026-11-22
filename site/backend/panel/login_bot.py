@@ -16,10 +16,8 @@ from panel.auth import BOT_LOGIN_PREFIX, MAGIC_TTL_SEC, bot_login_pending, confi
 from panel.routes.invites import consume_invite
 
 logger = logging.getLogger(__name__)
-router = Router()
 
 
-@router.message(CommandStart())
 async def on_start(message: Message) -> None:
     arg = (message.text or "").partition(" ")[2].strip()
     if arg.startswith(BOT_LOGIN_PREFIX) and message.from_user is not None:
@@ -95,14 +93,12 @@ async def _ask_login_confirmation(message: Message, token: str) -> None:
     )
 
 
-@router.callback_query(F.data == "weblogin:no")
 async def on_login_cancel(cb: CallbackQuery) -> None:
     await cb.answer()
     if isinstance(cb.message, Message):
         await cb.message.edit_text("Вход отменён.")
 
 
-@router.callback_query(F.data.startswith("weblogin:ok:"))
 async def on_login_confirm(cb: CallbackQuery) -> None:
     token = (cb.data or "").removeprefix("weblogin:ok:")
     u = cb.from_user

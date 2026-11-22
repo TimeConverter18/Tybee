@@ -246,28 +246,6 @@ def validate_cover_folder(path: str | os.PathLike[str], *, check_token_format: b
     return errors
 
 
-async def validate_all_covers(session: Any) -> list[str]:
-    """Cross-cover checks: a token must not be used by two covers."""
-    from sqlalchemy import select
-
-    from app.db.models import Cover
-
-    errors: list[str] = []
-    seen: dict[str, str] = {}
-    for cover in await session.scalars(select(Cover).order_by(Cover.id)):
-        data, _ = _read_yaml(resolve_path(cover.path) / "config.yaml")
-        token = data.get("token") if data else None
-        if not isinstance(token, str):
-            continue
-        if token in seen:
-            errors.append(
-                f"токен бота {mask_token(token)} повторяется в обложках '{seen[token]}' и '{cover.slug}'"
-            )
-        else:
-            seen[token] = cover.slug
-    return errors
-
-
 async def find_token_owner(session: Any, token: str, *, exclude_cover_id: int | None = None) -> str | None:
     """Slug of another cover that already uses ``token`` (compared by value)."""
     from sqlalchemy import select
@@ -326,14 +304,6 @@ def forget_cover(cover_id: int) -> None:
         _cache.pop(path, None)
     _errors.pop(cover_id, None)
     _error_seen.pop(cover_id, None)
-
-
-def reset() -> None:
-    """Drop all cached state (tests)."""
-    _paths.clear()
-    _cache.clear()
-    _errors.clear()
-    _error_seen.clear()
 
 
 def pop_runtime_errors() -> dict[int, str | None]:
@@ -404,10 +374,6 @@ def _record_error(cover_id: int, message: str) -> None:
     _errors[cover_id] = message
 
 
-def get_config(cover_id: int) -> CoverConfig:
-    return _load(cover_id)
-
-
 def cover_token(cover_id: int) -> str:
     return _load(cover_id).token
 
@@ -438,10 +404,6 @@ def cover_status_title(cover_id: int, status: str) -> str:
     except KeyError as exc:
         raise CoverConfigError(f"statuses.{status}: ключ отсутствует") from exc
     return template.format(brand=config.brand_name)
-
-
-def cover_brand(cover_id: int) -> str:
-    return _load(cover_id).brand_name
 
 
 def cover_unban_fine(cover_id: int) -> int:

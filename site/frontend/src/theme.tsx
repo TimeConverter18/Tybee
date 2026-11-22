@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 
-export type Theme = "light" | "dark";
+type Theme = "light" | "dark";
 /** What the person picked. "system" means: follow the OS until they choose a theme here. */
 type Choice = Theme | "system";
 

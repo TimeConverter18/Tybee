@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +31,6 @@ class Notification:
     text: str
     kind: str = "message"
     assigned: bool = False
-    extra: dict = field(default_factory=dict)
 
 
 async def _all_active_support_ids(session: AsyncSession) -> list[int]:

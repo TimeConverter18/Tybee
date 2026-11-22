@@ -24,7 +24,7 @@ class AvitoProfileUnavailable(AvitoError):
 
 
 class AvitoClient:
-    """API client of ONE Avito profile (see :func:`get_avito`)."""
+    """API client of ONE Avito profile (see :func:`client_for_profile`)."""
 
     def __init__(self, client_id: str, client_secret: str, account_id: int | None = None) -> None:
         self._client_id = client_id
@@ -33,7 +33,6 @@ class AvitoClient:
         self._token: str | None = None
         self._token_expires_at = 0.0
         self.account_id: int | None = account_id
-        self.enabled = True
         self._lock = asyncio.Lock()
 
     async def close(self) -> None:
@@ -89,8 +88,6 @@ class AvitoClient:
             return data or {}
 
     async def send_message(self, chat_id: str, text: str) -> None:
-        if not self.enabled:
-            raise AvitoError("Avito integration is not configured")
         if self.account_id is None:
             await self._ensure_token()
         await self._request(
@@ -101,8 +98,6 @@ class AvitoClient:
 
     async def upload_image(self, data: bytes, filename: str, mime: str) -> str:
         """``uploadImages``: returns the Avito image_id to send in a chat."""
-        if not self.enabled:
-            raise AvitoError("Avito integration is not configured")
         if self.account_id is None:
             await self._ensure_token()
         form = aiohttp.FormData()
@@ -116,8 +111,6 @@ class AvitoClient:
         return str(image_id)
 
     async def send_image(self, chat_id: str, image_id: str) -> dict:
-        if not self.enabled:
-            raise AvitoError("Avito integration is not configured")
         if self.account_id is None:
             await self._ensure_token()
         return await self._request(
@@ -134,8 +127,6 @@ class AvitoClient:
         return (result.get("voices_urls") or {}).get(voice_id)
 
     async def get_chat_user_name(self, chat_id: str) -> str | None:
-        if not self.enabled:
-            return None
         try:
             if self.account_id is None:
                 await self._ensure_token()

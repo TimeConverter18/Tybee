@@ -134,9 +134,7 @@ def validate_config(values: dict[str, int]) -> dict[str, int]:
 # ---------------------------------------------------------------------- metrics
 @dataclass
 class Quality:
-    messages: int = 0
     avg_chars: float = 0.0
-    new_clients: int = 0
     median_answer_sec: float | None = None
     speed: float = 0.5
     fullness: float = 0.5
@@ -293,9 +291,7 @@ async def compute(session: AsyncSession, staff: Staff, period: str, config: dict
     messages, avg_chars = await _messages(session, staff.telegram_id, lo, hi)
     new_clients, waits = await _accepted_clients(session, staff.telegram_id, lo, hi)
     quality = _score(waits, avg_chars, config)
-    quality.messages = messages
     quality.avg_chars = round(avg_chars, 1)
-    quality.new_clients = new_clients
 
     msg_rate = int(config["msg_rate_min_kop"] + (config["msg_rate_max_kop"] - config["msg_rate_min_kop"]) * quality.coefficient + 0.5)
     client_rate = int(

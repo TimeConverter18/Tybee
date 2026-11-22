@@ -14,14 +14,13 @@ import { PageSkeleton, SkeletonCards, TableSkeletonRows } from "../Skeletons";
 import { toast } from "../Toaster";
 
 type Product = { id: number; article: string; title: string; price: number; description: string | null; available: boolean; has_photo: boolean };
-type Page = { items: Product[]; total: number; page: number; pages: number };
-type Box = { id: number; title: string; price: number; available: boolean };
-type ImportResult = { added: number; updated: number; skipped: number; truncated: boolean; errors: { row: number; reason: string }[] };
+type Page = { items: Product[]; total: number; pages: number };
+type ImportResult = { added: number; updated: number; skipped: number; errors: { row: number; reason: string }[] };
 type ImportProduct = Pick<Product, "article" | "title" | "price" | "description" | "available">;
 type ImportPreview = { new_count: number; errors: { row: number; reason: string }[]; conflicts: { article: string; current: ImportProduct; incoming: ImportProduct }[] };
 type Choice = "current" | "xlsx";
 type Stats = {
-  users: number; banned: number; products: number; boxes: number; orders: number;
+  users: number; banned: number; products: number; orders: number;
   by_status: { status: string; label: string; count: number }[];
   covers: { slug: string; enabled: boolean; clients: number; orders: number; paid_orders: number }[];
 };
@@ -228,57 +227,6 @@ function Products() {
       </Dialog>}
       {modal === "new" && <ProductForm onDone={() => setModal("")} />}
       {modal && modal !== "new" && <ProductForm initial={modal} onDone={() => setModal("")} />}
-    </>
-  );
-}
-
-function Boxes() {
-  const qc = useQueryClient();
-  const list = useQuery({ queryKey: ["catalog-boxes"], queryFn: () => api<Box[]>("/api/catalog/boxes") });
-  const [f, setF] = useState({ title: "", price: "" });
-  const [err, setErr] = useState("");
-  const refresh = () => qc.invalidateQueries({ queryKey: ["catalog-boxes"] });
-  const onError = (e: Error) => setErr(e.message);
-  const create = useMutation({
-    mutationFn: () => api("/api/catalog/boxes", json("POST", { title: f.title, price: Number(f.price) })),
-    onSuccess: () => { setErr(""); setF({ title: "", price: "" }); refresh(); toast("Бокс добавлен"); }, onError,
-  });
-  const act = useMutation({
-    mutationFn: ({ b, body, del }: { b: Box; body?: unknown; del?: boolean }) =>
-      del ? api(`/api/catalog/boxes/${b.id}`, { method: "DELETE" }) : api(`/api/catalog/boxes/${b.id}`, json("PATCH", body)),
-    onSuccess: (_data, variables) => { setErr(""); refresh(); toast(variables.del ? "Бокс удалён" : "Бокс обновлён"); }, onError,
-  });
-  return (
-    <>
-      <form className="filters" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
-        <Input placeholder="Название бокса" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} maxLength={256} required />
-        <Input type="number" placeholder="Цена, ₽" min={1} value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} required />
-        <Button disabled={create.isPending}>Добавить бокс</Button>
-      </form>
-      {err && <p className="error">{err}</p>}
-      <Table>
-        <TableHeader><TableRow><TableHead>Название</TableHead><TableHead>Цена</TableHead><TableHead>В продаже</TableHead><TableHead /></TableRow></TableHeader>
-        <TableBody>
-          {list.isLoading && <TableSkeletonRows rows={4} cols={4} />}
-          {list.data?.map((b) => (
-            <TableRow key={b.id}>
-              <TableCell className="wrap">{b.title}</TableCell>
-              <TableCell>{b.price.toLocaleString("ru-RU")} ₽</TableCell>
-              <TableCell><Switch checked={b.available} onCheckedChange={() => act.mutate({ b, body: { available: !b.available } })} aria-label={`В продаже: ${b.title}`} /></TableCell>
-              <TableCell>
-                <div className="row-actions">
-                  <Button className="ghost sm" onClick={() => {
-                    const price = prompt("Новая цена, ₽", String(b.price));
-                    if (price) act.mutate({ b, body: { price: Number(price) } });
-                  }}>Цена</Button>
-                  <Button className="danger sm" onClick={() => confirm(`Удалить бокс «${b.title}»?`) && act.mutate({ b, del: true })}>Удалить</Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-          {list.data?.length === 0 && <TableRow><TableCell colSpan={4} className="muted">Боксов нет</TableCell></TableRow>}
-        </TableBody>
-      </Table>
     </>
   );
 }

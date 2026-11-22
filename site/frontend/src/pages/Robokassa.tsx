@@ -18,7 +18,6 @@ type Config = {
   configured: boolean;
   encryption_configured: boolean;
   source: "database" | "unset";
-  updated_at: string | null;
 };
 
 type FormState = {

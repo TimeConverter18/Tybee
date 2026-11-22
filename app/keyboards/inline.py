@@ -30,10 +30,6 @@ def back_button(cover_id: int, target: str) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-cancel_to_menu = back_to_menu
-review_pending = back_to_menu
-
-
 def profile_menu(cover_id: int) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text=cover_button(cover_id, "BTN_MY_ORDERS"), callback_data="profile:orders")
