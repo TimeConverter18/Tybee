@@ -3,7 +3,6 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, Me } from "./api";
-import { Avatar } from "./Avatar";
 import { ShiftControl, useSupportSummary } from "./Shift";
 import { useRealtime, useRealtimeState } from "./realtime";
 const Login = lazy(() => import("./pages/Login"));
@@ -170,7 +169,6 @@ function Layout({ me }: { me: Me }) {
         </nav>
         {has("support.chat") && <ShiftControl />}
         <div className="me">
-          <Avatar name={me.display_name} src={me.photo_url} seed={me.telegram_id} size={34} className="avatar me-avatar" />
           <div className="me-text">
             <div>{me.display_name}</div>
             <small>{me.username ? `@${me.username} · ` : ""}{me.role_label}</small>

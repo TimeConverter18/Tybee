@@ -9,7 +9,6 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShiftLogBlock } from "../Shift";
 import { api, auditLabel, auditTarget, AuditEntry, FinOp, fmtDate, fmtRub, json, Me, Payout, PAYOUT_STATUS, permLabel } from "../api";
-import { Avatar } from "../Avatar";
 import { SkeletonCards, SkeletonText, PageSkeleton, TableSkeletonRows } from "../Skeletons";
 import { browserPermission, notificationsAvailable, requestBrowserPermission, useNotifyPrefs } from "../notify";
 import { toast } from "../Toaster";
@@ -208,7 +207,6 @@ export default function Cabinet({ me }: { me: Me }) {
       <h1>Кабинет</h1>
       <Card className="card profile-card" style={{ maxWidth: 640 }}>
         <div className="profile-header">
-          <Avatar name={p.display_name} src={p.photo_url} seed={p.telegram_id} size={56} className="profile-avatar-lg" />
           <div className="profile-info">
             <div className="profile-name-row">
               <span className="profile-display-name">{p.display_name}</span>

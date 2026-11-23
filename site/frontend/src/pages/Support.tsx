@@ -10,7 +10,6 @@ import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { InfiniteData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, fmtDate, json, Me, THREAD_TAGS, threadTagMeta, ThreadTag } from "../api";
-import { Avatar } from "../Avatar";
 import { subscribeTopic, useRealtimeState } from "../realtime";
 import { ShiftRequiredDialog, useSupportSummary } from "../Shift";
 import { ChatSkeleton, SupportListSkeleton } from "../Skeletons";
@@ -119,7 +118,7 @@ function AttachmentView({ a }: { a: Attachment }) {
       </div> : <small className="muted">Файл недоступен</small>}
       {error && <small className="error">{error}</small>}
       {a.is_image && blobUrl && <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="app-dialog image-viewer" aria-describedby={undefined} showCloseButton={false}>
+        <DialogContent variant="lightbox" className="app-dialog image-viewer" aria-describedby={undefined} showCloseButton={false}>
           <DialogTitle className="sr-only">{a.name || "Фотография"}</DialogTitle>
           <div className="image-viewer-bar">
             <span className="image-viewer-name" title={a.name || "Фотография"}>{a.name || "Фотография"}</span>
@@ -280,7 +279,6 @@ function StartDialogModal({ me, onClose, onOpen }: { me: Me; onClose: () => void
               <div className="sup-start-results">
                 {results.data?.items.map((c) => (
                   <button type="button" key={c.id} className="sup-start-hit" onClick={() => { setPicked(c); setErr(""); }}>
-                    <Avatar name={c.name} seed={c.id} size={34} shape="rounded" maxLetters={1} className="sup-start-avatar" />
                     <span className="sup-start-who">
                       <b>{c.name}</b>
                       {c.username && <small>@{c.username}</small>}
@@ -538,15 +536,14 @@ function List({ me, current }: { me: Me; current?: number }) {
         <div key={t.id} className={`sup-row ${t.id === current ? "active" : ""} ${t.status}`}
           onPointerEnter={(e) => { if (e.pointerType === "mouse") showPeek(t, e.currentTarget); }} onPointerLeave={hidePeek}
           onClick={() => { hidePeek(); nav(`/support/${t.id}`); }}>
-          <Avatar name={t.client.name} seed={t.client.id} size={38} shape="rounded" maxLetters={1} className="sup-row-avatar" />
           <div className="sup-row-content">
           <div className="sup-row-head">
             <b>{t.client.name}</b>
-            {tagMeta && <span className={`sup-tag-badge tone-${tagMeta.tone}`}>{tagMeta.label}</span>}
             {t.has_paid_order && <span className="badge ok" title="Есть оплаченный счёт">💳</span>}
             {t.has_invoiced_order && <span className="badge wait" title="Есть выставленный счёт">🧾</span>}
             {t.unread > 0 && <span className="badge bad">{t.unread}</span>}
           </div>
+          {tagMeta && <div className="sup-row-tags"><span className={`sup-tag-badge tone-${tagMeta.tone}`}>{tagMeta.label}</span></div>}
           <small className="muted">
             {t.channel === "avito" ? t.channel_label ?? "Avito" : t.cover ?? "—"}
             {scope === "all" && ` · ${t.assigned_name ?? "в очереди"}`}
@@ -962,7 +959,6 @@ function Chat({ me, id }: { me: Me; id: number }) {
       )}
       <Card className="card sup-main" data-guide="chat">
         <div className={`head${headerExpanded ? " is-expanded" : ""}`} data-guide="chat-head">
-          <Avatar name={d.client.name} seed={d.client.id} size={42} shape="rounded" maxLetters={1} className="sup-chat-avatar" />
           <div className="sup-chat-identity">
             <b>{d.client.name}</b> {d.client.username && <span className="muted">@{d.client.username}</span>}
             <div className="muted">{d.assigned_name ? `Ведёт: ${d.assigned_name}` : "В очереди"}{d.status === "closed" && " · закрыта"}</div>
