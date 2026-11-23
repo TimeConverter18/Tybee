@@ -236,7 +236,7 @@ def bot_login_pending(token: str) -> bool:
 
 
 async def confirm_bot_login(
-    session: AsyncSession, token: str, tg_id: int, name: str | None, username: str | None
+    session: AsyncSession, token: str, tg_id: int, name: str | None, username: str | None, photo_url: str | None = None
 ) -> Staff:
     """Called by the login bot when the user confirms. Raises HTTPException with a user-facing detail."""
     if not bot_login_pending(token):
@@ -245,7 +245,7 @@ async def confirm_bot_login(
     if staff is None or not staff.is_active:
         raise HTTPException(403, "Вы не числитесь в сотрудниках — обратитесь к руководителю за приглашением.")
     _bot_logins[token].staff_id = tg_id
-    _bot_logins[token].profile = {"name": name, "username": username}
+    _bot_logins[token].profile = {"name": name, "username": username, "photo_url": photo_url}
     return staff
 
 
@@ -288,6 +288,7 @@ async def bot_login_poll(request: Request, session: AsyncSession = Depends(get_s
     if attempt.profile.get("name"):
         staff.display_name = attempt.profile["name"]
     staff.username = attempt.profile.get("username") or staff.username
+    staff.photo_url = attempt.profile.get("photo_url") or staff.photo_url
     await write_audit(session, staff, "auth.login", str(staff.telegram_id), {"method": "telegram_bot"})
     await session.commit()
     await issue_session(request, session, staff)

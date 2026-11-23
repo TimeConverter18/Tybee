@@ -7,6 +7,7 @@ import { CustomSelect } from "../Controls";
 import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, json, Me, RoleInfo, StaffMember } from "../api";
+import { Avatar } from "../Avatar";
 import { TableSkeletonRows } from "../Skeletons";
 import { ShiftLogBlock } from "../Shift";
 import { toast } from "../Toaster";
@@ -187,7 +188,7 @@ export default function Staff() {
             const opts = roles.data?.filter((r) => r.assignable || r.code === s.role) ?? [];
             return (
               <TableRow key={s.telegram_id}>
-                <TableCell>{s.display_name}</TableCell>
+                <TableCell><span className="staff-name-cell"><Avatar name={s.display_name} src={s.photo_url} seed={s.telegram_id} size={28} /><span>{s.display_name}</span></span></TableCell>
                 <TableCell>{s.username ? `@${s.username}` : "—"}</TableCell>
                 <TableCell>{s.telegram_id}</TableCell>
                 <TableCell title={s.manage_hint ?? undefined}>

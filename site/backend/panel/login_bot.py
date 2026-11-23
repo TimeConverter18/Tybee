@@ -13,6 +13,7 @@ from app.login_bot_config import token as login_bot_token
 from app.db import base as db_base
 from app.db.models import Staff
 from panel.auth import BOT_LOGIN_PREFIX, MAGIC_TTL_SEC, bot_login_pending, confirm_bot_login, issue_magic_link
+from panel.avatars import fetch_telegram_avatar
 from panel.routes.invites import consume_invite
 
 logger = logging.getLogger(__name__)
@@ -27,10 +28,11 @@ async def on_start(message: Message) -> None:
         await _send_panel_link(message)
         return
     u = message.from_user
+    photo_url = await fetch_telegram_avatar(message.bot, u.id) if message.bot else None
     try:
         async with db_base.session_factory() as session:
             staff = await consume_invite(
-                session, arg[4:], u.id, u.full_name, u.username, None
+                session, arg[4:], u.id, u.full_name, u.username, photo_url
             )
     except HTTPException as exc:
         await message.answer(f"⚠️ {exc.detail}")
@@ -102,9 +104,10 @@ async def on_login_cancel(cb: CallbackQuery) -> None:
 async def on_login_confirm(cb: CallbackQuery) -> None:
     token = (cb.data or "").removeprefix("weblogin:ok:")
     u = cb.from_user
+    photo_url = await fetch_telegram_avatar(cb.bot, u.id) if cb.bot else None
     try:
         async with db_base.session_factory() as session:
-            staff = await confirm_bot_login(session, token, u.id, u.full_name, u.username)
+            staff = await confirm_bot_login(session, token, u.id, u.full_name, u.username, photo_url)
     except HTTPException as exc:
         await cb.answer()
         if isinstance(cb.message, Message):

@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +17,7 @@ from app.support.assign import release_threads
 from app.support.shift import DEACTIVATED, end_shift
 from panel.audit import target_labels, write_audit
 from panel.auth import csrf_guard, current_staff, require_perm, staff_json
+from panel.avatars import resolve_staff_avatar
 from panel.deps import get_session
 from panel.permissions import ROLE_LABELS, ROLE_PERMS, Perm, can_manage, manageable_roles, perms_of
 
@@ -88,6 +90,19 @@ async def list_staff(
             cond.append(Staff.telegram_id == int(q.strip()))
         stmt = stmt.where(or_(*cond))
     return [member_json(s, actor) for s in await session.scalars(stmt)]
+
+
+@router.get("/staff/{staff_id}/avatar")
+async def staff_avatar(staff_id: int, _: Staff = Depends(current_staff)):
+    found = resolve_staff_avatar(staff_id)
+    if found is None:
+        raise HTTPException(404, "Аватар не найден")
+    path, mime = found
+    return FileResponse(
+        path,
+        media_type=mime,
+        headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 def _parse_role(value: str) -> StaffRole:
